@@ -3,470 +3,60 @@
 <head>
   <base target="_top">
   <style>
-    :root {
-      --bg:#070b16;
-      --surface:#0b1020;
-      --card:#111827;
-      --card2:#0f172a;
-      --line:#273349;
-      --line2:#334155;
-      --text:#eef2ff;
-      --muted:#9aa4b2;
-      --soft:#1f2937;
-      --blue:#2563eb;
-      --blue2:#1d4ed8;
-      --green:#16a34a;
-      --red:#dc2626;
-      --shadow:0 14px 38px rgba(0,0,0,.38);
-      --radius:18px;
-    }
-
-    * { box-sizing:border-box; }
-    html, body { width:100%; min-width:0; }
-    body {
-      margin:0;
-      font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-      background:
-        radial-gradient(circle at 16% -10%, rgba(37,99,235,.26), transparent 34%),
-        radial-gradient(circle at 110% 6%, rgba(22,163,74,.16), transparent 28%),
-        var(--bg);
-      color:var(--text);
-      letter-spacing:.01em;
-      overflow-x:hidden;
-    }
-
-    .shell { min-height:100vh; background:linear-gradient(180deg, rgba(255,255,255,.035), transparent 160px); }
-
-    .appbar {
-      position:sticky;
-      top:0;
-      z-index:5;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      padding:14px 16px;
-      background:rgba(7,11,22,.90);
-      border-bottom:1px solid rgba(255,255,255,.08);
-      backdrop-filter:blur(14px);
-    }
-
-    .brand { min-width:0; }
-    .brand b { display:block; font-size:17px; line-height:1.1; font-weight:850; letter-spacing:.02em; }
-    .brand span { display:block; color:var(--muted); font-size:11px; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-
-    .toolbar {
-      flex:0 0 auto;
-      display:flex;
-      align-items:center;
-      gap:6px;
-      padding:5px;
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:16px;
-      background:rgba(15,23,42,.78);
-      box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
-    }
-
-    .iconBtn {
-      width:42px;
-      height:40px;
-      min-width:42px;
-      min-height:40px;
-      margin:0;
-      padding:0;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      border:0;
-      border-radius:13px;
-      color:var(--muted);
-      background:transparent;
-      cursor:pointer;
-      transition:transform .12s ease, background .12s ease, color .12s ease, box-shadow .12s ease;
-    }
-
-    .iconBtn svg { width:20px; height:20px; display:block; stroke:currentColor; stroke-width:2.2; fill:none; stroke-linecap:round; stroke-linejoin:round; }
-    .iconBtn:hover { background:rgba(148,163,184,.12); color:var(--text); }
-    .iconBtn.active { color:white; background:linear-gradient(180deg, #3b82f6, #1d4ed8); box-shadow:0 10px 22px rgba(37,99,235,.32); }
-    .iconBtn:active { transform:scale(.97); }
-
-    .wrap { padding:14px; width:100%; max-width:100%; }
-    .page { display:none; animation:fadeIn .14s ease-out; }
-    .page.active { display:block; }
-    @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
-
-    .hero {
-      position:relative;
-      overflow:hidden;
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:22px;
-      padding:16px;
-      background:linear-gradient(135deg, rgba(37,99,235,.22), rgba(17,24,39,.92) 48%, rgba(22,163,74,.13));
-      box-shadow:var(--shadow);
-      margin-bottom:12px;
-    }
-    .hero:after { content:""; position:absolute; right:-42px; top:-42px; width:116px; height:116px; border-radius:999px; background:rgba(255,255,255,.08); filter:blur(1px); }
-    .heroTop { position:relative; z-index:1; display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
-    .title { font-size:24px; line-height:1.05; font-weight:900; letter-spacing:.01em; }
-    .subtle { color:var(--muted); font-size:12px; line-height:1.45; }
-
-    .badge {
-      flex:0 0 auto;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      min-height:28px;
-      padding:5px 10px;
-      border-radius:999px;
-      background:rgba(37,99,235,.20);
-      color:#bfdbfe;
-      font-size:11px;
-      font-weight:850;
-      border:1px solid rgba(96,165,250,.18);
-    }
-
-    .card {
-      width:100%;
-      min-width:0;
-      background:rgba(17,24,39,.92);
-      border:1px solid rgba(148,163,184,.16);
-      border-radius:var(--radius);
-      padding:14px;
-      margin-bottom:12px;
-      box-shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 12px 32px rgba(0,0,0,.20);
-    }
-    .cardHead { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
-    .card h3 { margin:0; font-size:18px; line-height:1.15; letter-spacing:.01em; }
-    .muted { color:var(--muted); font-size:12px; line-height:1.45; }
-
-    button.action {
-      width:100%;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      gap:8px;
-      border:0;
-      border-radius:14px;
-      padding:13px 14px;
-      margin-top:12px;
-      color:white;
-      background:linear-gradient(180deg, var(--blue), var(--blue2));
-      font-weight:850;
-      font-size:14px;
-      cursor:pointer;
-      box-shadow:0 12px 24px rgba(37,99,235,.22);
-      transition:transform .12s ease, filter .12s ease;
-    }
-    button.action:hover { filter:brightness(1.06); }
-    button.action:active { transform:translateY(1px) scale(.99); }
-    button.green { background:linear-gradient(180deg,#22c55e,#16a34a); box-shadow:0 12px 24px rgba(22,163,74,.20); }
-    button.gray { background:linear-gradient(180deg,#475569,#334155); box-shadow:none; }
-    button.red { background:linear-gradient(180deg,#ef4444,#dc2626); box-shadow:none; }
-    button.small { padding:10px 12px; font-size:12px; border-radius:12px; }
-
-    label { display:block; color:#cbd5e1; font-size:12px; font-weight:850; margin:12px 0 6px; }
-    .field, select, input {
-      width:100%;
-      max-width:100%;
-      min-width:0;
-      border:1px solid rgba(148,163,184,.18);
-      border-radius:14px;
-      background:#070b16;
-      color:var(--text);
-      padding:12px 13px;
-      min-height:46px;
-      font-size:14px;
-      outline:none;
-      box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
-    }
-    select { appearance:auto; }
-    input[type="date"] { font-variant-numeric:tabular-nums; letter-spacing:0; }
-    input:focus, select:focus { border-color:rgba(96,165,250,.65); box-shadow:0 0 0 3px rgba(37,99,235,.20); }
-
-    .dateStack { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; width:100%; min-width:0; }
-    .dateStack > div { min-width:0; }
-
-    .segmentTabs {
-      display:grid;
-      grid-template-columns:repeat(4, minmax(0,1fr));
-      gap:6px;
-      padding:5px;
-      margin-bottom:12px;
-      border:1px solid rgba(148,163,184,.14);
-      border-radius:16px;
-      background:rgba(15,23,42,.88);
-    }
-    .segBtn {
-      width:100%;
-      min-width:0;
-      margin:0;
-      padding:10px 6px;
-      border:0;
-      border-radius:12px;
-      color:var(--muted);
-      background:transparent;
-      font-size:11px;
-      font-weight:850;
-      cursor:pointer;
-    }
-    .segBtn.active { color:white; background:linear-gradient(180deg,#3b82f6,#1d4ed8); box-shadow:0 8px 20px rgba(37,99,235,.22); }
-    .tab { display:none; }
-    .tab.active { display:block; }
-
-    .item {
-      width:100%;
-      min-width:0;
-      background:#070b16;
-      border:1px solid rgba(148,163,184,.14);
-      border-radius:14px;
-      padding:12px;
-      margin-top:8px;
-    }
-
-    pre {
-      width:100%;
-      min-width:0;
-      white-space:pre-wrap;
-      word-break:break-word;
-      max-height:280px;
-      overflow:auto;
-      background:#070b16;
-      border:1px solid rgba(148,163,184,.14);
-      border-radius:14px;
-      padding:12px;
-      color:#a9b4c2;
-      font-size:12px;
-      line-height:1.45;
-    }
+    :root { --bg:#070b16; --surface:#0b1020; --card:#111827; --text:#eef2ff; --muted:#9aa4b2; --line:#273349; --blue:#2563eb; --green:#16a34a; --red:#dc2626; --soft:#1f2937; --shadow:0 14px 38px rgba(0,0,0,.38); }
+    *{box-sizing:border-box} body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:radial-gradient(circle at 16% -10%,rgba(37,99,235,.24),transparent 34%),var(--bg);color:var(--text);overflow-x:hidden}.shell{min-height:100vh}.appbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;background:rgba(7,11,22,.92);border-bottom:1px solid rgba(255,255,255,.08);backdrop-filter:blur(14px)}.brand b{display:block;font-size:17px;line-height:1.1;font-weight:850}.brand span{display:block;color:var(--muted);font-size:11px;margin-top:4px}.toolbar{display:flex;gap:6px;padding:5px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:rgba(15,23,42,.78)}.iconBtn{width:42px;height:40px;margin:0;padding:0;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:13px;color:var(--muted);background:transparent;cursor:pointer}.iconBtn svg{width:20px;height:20px;display:block;stroke:currentColor;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}.iconBtn.active{color:white;background:linear-gradient(180deg,#3b82f6,#1d4ed8);box-shadow:0 10px 22px rgba(37,99,235,.32)}.wrap{padding:14px;width:100%;max-width:100%}.page{display:none;animation:fade .14s ease-out}.page.active{display:block}@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}.hero{position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.08);border-radius:22px;padding:16px;background:linear-gradient(135deg,rgba(37,99,235,.22),rgba(17,24,39,.92) 48%,rgba(22,163,74,.13));box-shadow:var(--shadow);margin-bottom:12px}.heroTop{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.title{font-size:24px;line-height:1.05;font-weight:900}.subtle,.muted{color:var(--muted);font-size:12px;line-height:1.45}.badge{display:inline-flex;align-items:center;justify-content:center;min-height:28px;padding:5px 10px;border-radius:999px;background:rgba(37,99,235,.20);color:#bfdbfe;font-size:11px;font-weight:850;border:1px solid rgba(96,165,250,.18)}.card{width:100%;background:rgba(17,24,39,.92);border:1px solid rgba(148,163,184,.16);border-radius:18px;padding:14px;margin-bottom:12px;box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 12px 32px rgba(0,0,0,.20)}.card h3{margin:0 0 8px;font-size:18px;line-height:1.15}.action{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:14px;padding:13px 14px;margin-top:12px;color:white;background:linear-gradient(180deg,#2563eb,#1d4ed8);font-weight:850;font-size:14px;cursor:pointer;box-shadow:0 12px 24px rgba(37,99,235,.22)}.green{background:linear-gradient(180deg,#22c55e,#16a34a)}.gray{background:linear-gradient(180deg,#475569,#334155);box-shadow:none}.red{background:linear-gradient(180deg,#ef4444,#dc2626);box-shadow:none}.small{padding:10px 12px;font-size:12px;border-radius:12px}label{display:block;color:#cbd5e1;font-size:12px;font-weight:850;margin:12px 0 6px}select,input{width:100%;max-width:100%;border:1px solid rgba(148,163,184,.18);border-radius:14px;background:#070b16;color:var(--text);padding:12px 13px;min-height:46px;font-size:14px;outline:none}.dateStack{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;width:100%}.segmentTabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:5px;margin-bottom:12px;border:1px solid rgba(148,163,184,.14);border-radius:16px;background:rgba(15,23,42,.88)}.segBtn{width:100%;margin:0;padding:10px 6px;border:0;border-radius:12px;color:var(--muted);background:transparent;font-size:11px;font-weight:850;cursor:pointer}.segBtn.active{color:white;background:linear-gradient(180deg,#3b82f6,#1d4ed8);box-shadow:0 8px 20px rgba(37,99,235,.22)}.tab{display:none}.tab.active{display:block}.item{background:#070b16;border:1px solid rgba(148,163,184,.14);border-radius:14px;padding:12px;margin-top:8px}.accountRow{display:grid;grid-template-columns:26px minmax(0,1fr);gap:10px;align-items:start;background:#070b16;border:1px solid rgba(148,163,184,.14);border-radius:14px;padding:12px;margin-top:8px}.accountRow input{width:18px;height:18px;min-height:18px;margin:2px 0 0;padding:0}pre{width:100%;white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto;background:#070b16;border:1px solid rgba(148,163,184,.14);border-radius:14px;padding:12px;color:#a9b4c2;font-size:12px;line-height:1.45}.hint{padding:10px;border-radius:14px;background:rgba(37,99,235,.10);border:1px solid rgba(96,165,250,.14);color:#bfdbfe;font-size:12px;line-height:1.45;margin-top:10px}
   </style>
 </head>
 <body>
 <div class="shell">
   <div class="appbar">
     <div class="brand"><b>Portfolio Link</b><span>Brokerage dashboard</span></div>
-    <div class="toolbar" aria-label="Toolbar">
-      <button class="iconBtn active" id="homeIcon" title="Home" onclick="showPage('home')" aria-label="Home">
-        <svg viewBox="0 0 24 24"><path d="M3 10.8 12 3l9 7.8"></path><path d="M5.5 10.5V21h13V10.5"></path><path d="M9.5 21v-6h5v6"></path></svg>
-      </button>
-      <button class="iconBtn" id="settingsIcon" title="Settings" onclick="showPage('settings')" aria-label="Settings">
-        <svg viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"></path><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.36a1.7 1.7 0 0 0-1 .57 1.7 1.7 0 0 0-.44 1.15V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 8.4 19.3a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.04 15a1.7 1.7 0 0 0-.57-1H3.4a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 5.1 8.4a1.7 1.7 0 0 0-.34-1.87l-.06-.06A2 2 0 1 1 7.53 3.64l.06.06A1.7 1.7 0 0 0 9.5 4.04a1.7 1.7 0 0 0 1-.57V3.4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.57 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.96 9.5a1.7 1.7 0 0 0 .57 1h.07a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.11.5Z"></path></svg>
-      </button>
+    <div class="toolbar">
+      <button class="iconBtn active" id="homeIcon" onclick="showPage('home')" title="Home"><svg viewBox="0 0 24 24"><path d="M3 10.8 12 3l9 7.8"></path><path d="M5.5 10.5V21h13V10.5"></path><path d="M9.5 21v-6h5v6"></path></svg></button>
+      <button class="iconBtn" id="settingsIcon" onclick="showPage('settings')" title="Settings"><svg viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"></path><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.36a1.7 1.7 0 0 0-1 .57 1.7 1.7 0 0 0-.44 1.15V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 8.4 19.3a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.04 15a1.7 1.7 0 0 0-.57-1H3.4a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 5.1 8.4a1.7 1.7 0 0 0-.34-1.87l-.06-.06A2 2 0 1 1 7.53 3.64l.06.06A1.7 1.7 0 0 0 9.5 4.04a1.7 1.7 0 0 0 1-.57V3.4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.57 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.96 9.5a1.7 1.7 0 0 0 .57 1h.07a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.11.5Z"></path></svg></button>
     </div>
   </div>
 
   <div class="wrap">
     <section id="homePage" class="page active">
-      <div class="hero">
-        <div class="heroTop">
-          <div>
-            <div class="title">Main Page</div>
-            <div id="status" class="subtle" style="margin-top:8px;">Loading...</div>
-          </div>
-          <span id="badge" class="badge">Loading</span>
-        </div>
-        <button class="action gray small" onclick="refreshState()">Refresh Status</button>
-      </div>
-
-      <div class="card">
-        <div class="cardHead"><h3>Holdings</h3></div>
-        <div class="muted">Refreshes Holdings, By Ticker, By Account, and Portfolio Total.</div>
-        <button class="action green" onclick="pullHoldings()">Pull Holdings Now</button>
-      </div>
-
-      <div class="card">
-        <div class="cardHead"><h3>Transactions</h3></div>
-        <div class="muted">Default is ITD. Append mode keeps old transactions and skips duplicates.</div>
-
-        <label for="dateMode">Date Range</label>
-        <select id="dateMode" onchange="toggleCustomDates()">
-          <option value="itd">ITD - inception to date</option>
-          <option value="custom">Custom date range</option>
-        </select>
-
-        <div id="customDates" style="display:none;">
-          <div class="dateStack">
-            <div><label for="startDate">Start</label><input id="startDate" type="date"></div>
-            <div><label for="endDate">End</label><input id="endDate" type="date"></div>
-          </div>
-        </div>
-
-        <label for="writeMode">Write Mode</label>
-        <select id="writeMode">
-          <option value="append">Append only - keep old transactions</option>
-          <option value="replace">Replace tab - requires confirmation</option>
-        </select>
-
-        <button class="action" onclick="pullTransactions()">Pull Transactions</button>
-      </div>
+      <div class="hero"><div class="heroTop"><div><div class="title">Main Page</div><div id="status" class="subtle" style="margin-top:8px;">Loading...</div></div><span id="badge" class="badge">Loading</span></div><button class="action gray small" onclick="refreshState()">Refresh Status</button></div>
+      <div class="card"><h3>Holdings</h3><div class="muted">Pulls only the accounts selected in Settings.</div><button class="action green" onclick="pullHoldings()">Pull Holdings</button></div>
+      <div class="card"><h3>Transactions</h3><div class="muted">Pulls only selected accounts. Default is ITD append-only.</div><label>Date Range</label><select id="dateMode" onchange="toggleCustomDates()"><option value="itd">ITD - inception to date</option><option value="custom">Custom date range</option></select><div id="customDates" style="display:none;"><div class="dateStack"><div><label>Start</label><input id="startDate" type="date"></div><div><label>End</label><input id="endDate" type="date"></div></div></div><label>Write Mode</label><select id="writeMode"><option value="append">Append only - keep old transactions</option><option value="replace">Replace tab - requires confirmation</option></select><button class="action" onclick="pullTransactions()">Pull Transactions</button></div>
     </section>
 
     <section id="settingsPage" class="page">
-      <div class="hero">
-        <div class="heroTop">
-          <div>
-            <div class="title">Settings</div>
-            <div class="subtle" style="margin-top:8px;">Connections, accounts, plan, and log.</div>
-          </div>
-          <span class="badge">Tools</span>
-        </div>
-      </div>
-
-      <div class="segmentTabs">
-        <button class="segBtn active" id="connectTabBtn" onclick="showTab('connect')">Connect</button>
-        <button class="segBtn" id="accountsTabBtn" onclick="showTab('accounts')">Accounts</button>
-        <button class="segBtn" id="planTabBtn" onclick="showTab('plan')">Plan</button>
-        <button class="segBtn" id="logTabBtn" onclick="showTab('log')">Log</button>
-      </div>
-
-      <div class="tab active" id="connectTab">
-        <div class="card">
-          <h3>Link Brokerage</h3>
-          <div class="muted">Secure login opens in a larger popup. Users never enter provider ID/secrets.</div>
-          <button class="action green" onclick="connectBrokerage()">Connect E*TRADE / Brokerage</button>
-        </div>
-        <div class="card">
-          <h3>Repair</h3>
-          <div class="muted">Use this if tabs are missing or layout is broken.</div>
-          <button class="action gray" onclick="setupTabs()">Setup / Repair Tabs</button>
-        </div>
-      </div>
-
-      <div class="tab" id="accountsTab">
-        <div class="card"><h3>Linked Accounts</h3><div id="items" class="muted" style="margin-top:8px;">Loading...</div></div>
-      </div>
-
-      <div class="tab" id="planTab">
-        <div class="card">
-          <h3>Subscription</h3>
-          <div class="muted">Payment links will go here later.</div>
-          <button class="action gray" onclick="managePlan()">Manage Subscription</button>
-        </div>
-      </div>
-
-      <div class="tab" id="logTab">
-        <div class="card"><h3>Log</h3><pre id="log">Ready.</pre><button class="action gray small" onclick="clearLog()">Clear Log</button></div>
-      </div>
+      <div class="hero"><div class="heroTop"><div><div class="title">Settings</div><div class="subtle" style="margin-top:8px;">Connect brokerage and choose which accounts to pull.</div></div><span class="badge">Tools</span></div></div>
+      <div class="segmentTabs"><button class="segBtn active" id="connectTabBtn" onclick="showTab('connect')">Connect</button><button class="segBtn" id="accountsTabBtn" onclick="showTab('accounts')">Accounts</button><button class="segBtn" id="planTabBtn" onclick="showTab('plan')">Plan</button><button class="segBtn" id="logTabBtn" onclick="showTab('log')">Log</button></div>
+      <div class="tab active" id="connectTab"><div class="card"><h3>Link Brokerage</h3><div class="muted">Secure login opens in a larger popup. Users never enter provider ID/secrets.</div><button class="action green" onclick="connectBrokerage()">Connect E*TRADE / Brokerage</button></div><div class="card"><h3>Repair</h3><div class="muted">Use this to remove old extra tabs and keep only Holdings + Transactions.</div><button class="action gray" onclick="setupTabs()">Setup / Repair Tabs</button></div></div>
+      <div class="tab" id="accountsTab"><div class="card"><h3>Account Selection</h3><div class="muted">Check the exact accounts you want Portfolio Link to pull. Unchecked accounts are ignored.</div><div id="accountPicker"></div><button class="action" onclick="saveAccountSelection()">Save Selected Accounts</button><button class="action gray small" onclick="selectAllAccountsUi()">Select All</button><button class="action gray small" onclick="clearAllAccountsUi()">Clear All</button></div><div class="card"><h3>Linked Institutions</h3><div id="items" class="muted">Loading...</div></div></div>
+      <div class="tab" id="planTab"><div class="card"><h3>Subscription</h3><div class="muted">Payment links will go here later.</div><button class="action gray" onclick="managePlan()">Manage Subscription</button></div></div>
+      <div class="tab" id="logTab"><div class="card"><h3>Log</h3><pre id="log">Ready.</pre><button class="action gray small" onclick="clearLog()">Clear Log</button></div></div>
     </section>
   </div>
 </div>
-
 <script>
-let latestState = null;
-
-function log(m) {
-  const e = document.getElementById('log');
-  if (!e) return;
-  e.textContent = '[' + new Date().toLocaleTimeString() + '] ' + m + '\n' + e.textContent;
-}
-
-function clearLog() { document.getElementById('log').textContent = 'Ready.'; }
-
-function showPage(page) {
-  const isHome = page === 'home';
-  document.getElementById('homePage').classList.toggle('active', isHome);
-  document.getElementById('settingsPage').classList.toggle('active', !isHome);
-  document.getElementById('homeIcon').classList.toggle('active', isHome);
-  document.getElementById('settingsIcon').classList.toggle('active', !isHome);
-  if (!isHome) refreshState();
-}
-
-function showTab(name) {
-  ['connect','accounts','plan','log'].forEach(function(x) {
-    document.getElementById(x + 'Tab').classList.toggle('active', x === name);
-    document.getElementById(x + 'TabBtn').classList.toggle('active', x === name);
-  });
-}
-
-function refreshState() {
-  google.script.run.withSuccessHandler(renderState).withFailureHandler(showError).getDashboardState();
-}
-
-function renderState(s) {
-  latestState = s;
-  document.getElementById('badge').textContent = s.linkedCount > 0 ? 'Linked' : 'Trial';
-  document.getElementById('status').textContent = 'Environment: ' + s.env + '  |  Linked accounts: ' + s.linkedCount + '  |  Service: ' + ((s.hasClient && s.hasSecret) ? 'Ready' : 'Needs admin setup');
-  if (!document.getElementById('startDate').value) document.getElementById('startDate').value = s.defaultStartDate || '2000-01-01';
-  if (!document.getElementById('endDate').value) document.getElementById('endDate').value = s.today || '';
-  renderItems(s.linkedItems || []);
-}
-
-function toggleCustomDates() {
-  document.getElementById('customDates').style.display = document.getElementById('dateMode').value === 'custom' ? 'block' : 'none';
-}
-
-function connectBrokerage() {
-  log('Opening secure login popup...');
-  google.script.run.withSuccessHandler(function() { log('Popup opened. Finish login there, then refresh status.'); })
-    .withFailureHandler(showError)
-    .showPlaidConnectModal();
-}
-
-function updateItem(itemId) {
-  log('Opening update login popup...');
-  google.script.run.withSuccessHandler(function() { log('Update popup opened.'); })
-    .withFailureHandler(showError)
-    .showPlaidUpdateModal(itemId);
-}
-
-function setupTabs() {
-  log('Setting up tabs and removing Config tab...');
-  google.script.run.withSuccessHandler(function(m) { log(m); refreshState(); })
-    .withFailureHandler(showError)
-    .setupDashboard();
-}
-
-function pullHoldings() {
-  log('Pulling holdings...');
-  google.script.run.withSuccessHandler(function(r) { log(r.message + ' Rows: ' + r.rows); refreshState(); })
-    .withFailureHandler(showError)
-    .pullHoldingsToSheet();
-}
-
-function pullTransactions() {
-  const mode = document.getElementById('writeMode').value;
-  const dateMode = document.getElementById('dateMode').value;
-  const form = {
-    dateMode: dateMode,
-    writeMode: mode,
-    startDate: document.getElementById('startDate').value,
-    endDate: document.getElementById('endDate').value,
-    replaceConfirmed: false
-  };
-
-  if (mode === 'replace') {
-    const ok = confirm('Replace will wipe the current Transactions tab first. Continue?');
-    if (!ok) { log('Replace cancelled. Old transactions kept.'); return; }
-    form.replaceConfirmed = true;
-  }
-
-  log('Pulling transactions in ' + mode + ' mode...');
-  google.script.run.withSuccessHandler(function(r) {
-      log(r.message + ' Pulled: ' + r.rowsPulled + ' Added: ' + r.rowsAdded + ' Duplicates skipped: ' + r.skippedDuplicates);
-    })
-    .withFailureHandler(showError)
-    .pullTransactionsFromSidebar(form);
-}
-
-function renderItems(items) {
-  const el = document.getElementById('items');
-  if (!items.length) { el.textContent = 'No brokerage linked yet.'; return; }
-  el.innerHTML = '';
-  items.forEach(function(x) {
-    const div = document.createElement('div');
-    div.className = 'item';
-    div.innerHTML = '<b>' + esc(x.institution_name || 'Brokerage') + '</b><br>' +
-      '<span class="muted">Linked: ' + esc(x.linked_at || '') + '</span><br>' +
-      '<span class="muted">Last pull: ' + esc(x.last_successful_pull || 'Never') + '</span>' +
-      '<button class="action gray small" onclick="updateItem(\'' + escAttr(x.item_id || '') + '\')">Fix / Update Login</button>';
-    el.appendChild(div);
-  });
-}
-
-function managePlan() { alert('Subscription links will be added in the paid backend build.'); }
-function showError(err) { const msg = err && err.message ? err.message : String(err); log('ERROR: ' + msg); alert(msg); }
-function esc(v) { return String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
-function escAttr(v) { return esc(v).replaceAll('`','&#096;'); }
-
+let latestState=null;
+function log(m){const e=document.getElementById('log');if(e)e.textContent='['+new Date().toLocaleTimeString()+'] '+m+'\n'+e.textContent;}
+function clearLog(){document.getElementById('log').textContent='Ready.';}
+function showPage(page){const home=page==='home';document.getElementById('homePage').classList.toggle('active',home);document.getElementById('settingsPage').classList.toggle('active',!home);document.getElementById('homeIcon').classList.toggle('active',home);document.getElementById('settingsIcon').classList.toggle('active',!home);if(!home)refreshState();}
+function showTab(name){['connect','accounts','plan','log'].forEach(x=>{document.getElementById(x+'Tab').classList.toggle('active',x===name);document.getElementById(x+'TabBtn').classList.toggle('active',x===name);});if(name==='accounts')refreshState();}
+function refreshState(){google.script.run.withSuccessHandler(renderState).withFailureHandler(showError).getDashboardState();}
+function renderState(s){latestState=s;document.getElementById('badge').textContent=s.linkedCount>0?'Linked':'Trial';const picked=s.selectedAccountCount?s.selectedAccountCount+' selected':'All / none selected';document.getElementById('status').textContent='Environment: '+s.env+' | Linked: '+s.linkedCount+' | Accounts: '+picked+' | Service: '+((s.hasClient&&s.hasSecret)?'Ready':'Needs admin setup');if(!document.getElementById('startDate').value)document.getElementById('startDate').value=s.defaultStartDate||'2000-01-01';if(!document.getElementById('endDate').value)document.getElementById('endDate').value=s.today||'';renderItems(s.linkedItems||[]);renderAccountPicker(s.selectableAccounts||[],s.selectedAccountIds||[]);}
+function toggleCustomDates(){document.getElementById('customDates').style.display=document.getElementById('dateMode').value==='custom'?'block':'none';}
+function connectBrokerage(){log('Opening secure login popup...');google.script.run.withSuccessHandler(()=>{log('Popup opened. Finish login there, then refresh status.');}).withFailureHandler(showError).showPlaidConnectModal();}
+function setupTabs(){log('Simplifying tabs...');google.script.run.withSuccessHandler(m=>{log(m);refreshState();}).withFailureHandler(showError).setupDashboard();}
+function pullHoldings(){log('Pulling holdings for selected accounts...');google.script.run.withSuccessHandler(r=>{log(r.message+' Rows: '+r.rows);refreshState();}).withFailureHandler(showError).pullHoldingsToSheet();}
+function pullTransactions(){const mode=document.getElementById('writeMode').value,dateMode=document.getElementById('dateMode').value,form={dateMode:dateMode,writeMode:mode,startDate:document.getElementById('startDate').value,endDate:document.getElementById('endDate').value,replaceConfirmed:false};if(mode==='replace'){if(!confirm('Replace will wipe the current Transactions tab first. Continue?')){log('Replace cancelled. Old transactions kept.');return;}form.replaceConfirmed=true;}log('Pulling transactions for selected accounts...');google.script.run.withSuccessHandler(r=>log(r.message+' Pulled: '+r.rowsPulled+' Added: '+r.rowsAdded+' Duplicates skipped: '+r.skippedDuplicates)).withFailureHandler(showError).pullTransactionsFromSidebar(form);}
+function renderItems(items){const el=document.getElementById('items');if(!items.length){el.textContent='No brokerage linked yet.';return;}el.innerHTML='';items.forEach(x=>{const div=document.createElement('div');div.className='item';div.innerHTML='<b>'+esc(x.institution_name||'Brokerage')+'</b><br><span class="muted">Linked: '+esc(x.linked_at||'')+'</span><br><span class="muted">Accounts found: '+esc(x.account_count||0)+'</span><br><span class="muted">Last pull: '+esc(x.last_successful_pull||'Never')+'</span><button class="action gray small" onclick="updateItem(\''+escAttr(x.item_id||'')+'\')">Fix / Update Login</button>';el.appendChild(div);});}
+function renderAccountPicker(accounts,selected){const el=document.getElementById('accountPicker'),set={};selected.forEach(id=>set[id]=true);if(!accounts.length){el.innerHTML='<div class="hint">No sub-accounts found yet. Connect a brokerage first, then come back here.</div>';return;}el.innerHTML='';accounts.forEach(a=>{const id=a.account_id,checked=set[id]?'checked':'';const div=document.createElement('label');div.className='accountRow';div.innerHTML='<input type="checkbox" class="acctBox" value="'+escAttr(id)+'" '+checked+'><div><b>'+esc(a.name||'Account')+'</b><br><span class="muted">'+esc(a.institution_name||'')+(a.mask?' • •••• '+esc(a.mask):'')+'</span><br><span class="muted">'+esc([a.type,a.subtype].filter(Boolean).join(' / '))+'</span></div>';el.appendChild(div);});}
+function saveAccountSelection(){const ids=[...document.querySelectorAll('.acctBox:checked')].map(x=>x.value);log('Saving selected accounts...');google.script.run.withSuccessHandler(s=>{log('Selected accounts saved.');renderState(s);}).withFailureHandler(showError).saveSelectedAccounts(ids);}
+function selectAllAccountsUi(){document.querySelectorAll('.acctBox').forEach(x=>x.checked=true);saveAccountSelection();}
+function clearAllAccountsUi(){document.querySelectorAll('.acctBox').forEach(x=>x.checked=false);saveAccountSelection();}
+function updateItem(itemId){log('Opening update login popup...');google.script.run.withSuccessHandler(()=>log('Update popup opened.')).withFailureHandler(showError).showPlaidUpdateModal(itemId);}
+function managePlan(){alert('Subscription links will be added in the paid backend build.');}
+function showError(err){const msg=err&&err.message?err.message:String(err);log('ERROR: '+msg);alert(msg);}
+function esc(v){return String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');}
+function escAttr(v){return esc(v).replaceAll('`','&#096;');}
 refreshState();
 </script>
 </body>
