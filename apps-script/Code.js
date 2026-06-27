@@ -5,7 +5,7 @@
  * Secrets are stored in Apps Script Properties from the sidebar UI.
  * Do not hardcode Plaid secrets in this repo.
  *
- * Version: safe-client-user-id-fix
+ * Version: seamless-ui-context-safe-v2
  */
 
 const APP_NAME = 'Plaid E*TRADE Holdings Dashboard';
@@ -60,7 +60,17 @@ const HEADERS = {
   config: ['Setting', 'Value', 'Notes']
 };
 
-function onOpen() {
+function onOpen(e) {
+  // Do not manually run onOpen from the Apps Script editor.
+  // It only has UI access when the Google Sheet opens normally.
+  try {
+    addPlaidMenu_();
+  } catch (err) {
+    console.log('onOpen skipped because Sheet UI is not available in this context: ' + err);
+  }
+}
+
+function addPlaidMenu_() {
   SpreadsheetApp.getUi()
     .createMenu('Plaid Brokerage')
     .addItem('Open Dashboard', 'showDashboard')
@@ -72,6 +82,12 @@ function onOpen() {
     .addItem('Show Linked Items', 'showLinkedItemsAlert')
     .addItem('Reset Token Memory', 'resetTokenMemoryConfirm')
     .addToUi();
+}
+
+function manualSetupFromEditor() {
+  // Safe to run from Apps Script editor.
+  // This does not call SpreadsheetApp.getUi().
+  return setupDashboard();
 }
 
 function showDashboard() {
@@ -106,18 +122,19 @@ function setupDashboard() {
   createOrRepairSheet_(ss, SHEETS.config, HEADERS.config, 200, 10);
 
   const configSheet = ss.getSheetByName(SHEETS.config);
-  configSheet.getRange(2, 1, 8, 3).setValues([
+  configSheet.getRange(2, 1, 9, 3).setValues([
     ['Spreadsheet ID', ss.getId(), 'Used by the Apps Script backend.'],
     ['Plaid Environment', getPlaidEnv_(), 'sandbox first; production later.'],
     ['Token Memory Scope', getTokenScope_(), 'user = per Google user; document = shared in this spreadsheet script.'],
     ['GitHub Repo', 'G-enterpriseGroup/plaid-etrade-sheets-app', 'Source controlled app code.'],
-    ['Secret Location', 'Apps Script Properties', 'Do not commit Plaid secrets to GitHub.'],
+    ['Secret Location', 'Apps Script Properties or backend secret manager', 'Do not commit Plaid secrets to GitHub.'],
     ['Relink Rule', 'Only when Plaid update mode is needed', 'Normal refresh uses stored access_token.'],
     ['Client User ID Rule', 'Random safe ID', 'Plaid rejects emails in client_user_id.'],
+    ['Manual Editor Function', 'manualSetupFromEditor', 'Run this from Apps Script editor, not onOpen.'],
     ['Last Setup', now_(), '']
   ]);
 
-  return 'Dashboard tabs are ready.';
+  return 'Dashboard tabs are ready. Open the Google Sheet, refresh, then use Plaid Brokerage > Open Dashboard.';
 }
 
 function savePlaidSettings(form) {
