@@ -4,6 +4,8 @@ Secrets.Env
 *.env
 plaid_access_tokens.json
 .clasprc.json
+apps-script/PrivateConfig.js
+apps-script/Secrets.js
 
 # Python local
 __pycache__/
