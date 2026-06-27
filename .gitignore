@@ -1,0 +1,26 @@
+# Secrets - never commit
+.env
+*.env
+Secrets.Env
+plaid_access_tokens.json
+.clasprc.json
+
+# Local exports
+exports/
+*.csv
+*.xlsx
+
+# Node / clasp
+node_modules/
+npm-debug.log*
+
+# Python local
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Mac / IDE
+.DS_Store
+.vscode/
+.idea/
