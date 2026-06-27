@@ -1,7 +1,6 @@
 **/**
-!appsscript.json
-!Code.js
-!Sidebar.html
-!SidebarV2.html
-!PlaidLinkModal.html
-!PlaidModalBackend.js
+!apps-script/Code.gs
+!apps-script/Sidebar.html
+!apps-script/PlaidLinkModal.html
+!apps-script/PlaidModalBackend.gs
+!apps-script/MarketAnalysisReport.gs
