@@ -4,6 +4,8 @@
  *
  * Secrets are stored in Apps Script Properties from the sidebar UI.
  * Do not hardcode Plaid secrets in this repo.
+ *
+ * Version: safe-client-user-id-fix
  */
 
 const APP_NAME = 'Plaid E*TRADE Holdings Dashboard';
@@ -24,7 +26,8 @@ const PROPS = {
   env: 'PLAID_ENV',
   tokenScope: 'TOKEN_STORAGE_SCOPE',
   itemsUser: 'PLAID_ITEMS_USER_JSON',
-  itemsDocument: 'PLAID_ITEMS_DOCUMENT_JSON'
+  itemsDocument: 'PLAID_ITEMS_DOCUMENT_JSON',
+  safeClientUserId: 'PLAID_SAFE_CLIENT_USER_ID'
 };
 
 const HEADERS = {
@@ -103,13 +106,14 @@ function setupDashboard() {
   createOrRepairSheet_(ss, SHEETS.config, HEADERS.config, 200, 10);
 
   const configSheet = ss.getSheetByName(SHEETS.config);
-  configSheet.getRange(2, 1, 7, 3).setValues([
+  configSheet.getRange(2, 1, 8, 3).setValues([
     ['Spreadsheet ID', ss.getId(), 'Used by the Apps Script backend.'],
     ['Plaid Environment', getPlaidEnv_(), 'sandbox first; production later.'],
     ['Token Memory Scope', getTokenScope_(), 'user = per Google user; document = shared in this spreadsheet script.'],
     ['GitHub Repo', 'G-enterpriseGroup/plaid-etrade-sheets-app', 'Source controlled app code.'],
     ['Secret Location', 'Apps Script Properties', 'Do not commit Plaid secrets to GitHub.'],
     ['Relink Rule', 'Only when Plaid update mode is needed', 'Normal refresh uses stored access_token.'],
+    ['Client User ID Rule', 'Random safe ID', 'Plaid rejects emails in client_user_id.'],
     ['Last Setup', now_(), '']
   ]);
 
@@ -322,25 +326,53 @@ function writeSummaryTabs_(holdingsRows, linkedItems) {
     tickerMap[ticker].unrealized += unrealized;
     tickerMap[ticker].accounts[account] = true;
 
-    const accountKey = institution + '|' + account;
-    if (!accountMap[accountKey]) accountMap[accountKey] = { institution, account, value: 0, cost: 0, unrealized: 0, positions: 0 };
-    accountMap[accountKey].value += value;
-    accountMap[accountKey].cost += cost;
-    accountMap[accountKey].unrealized += unrealized;
-    accountMap[accountKey].positions += 1;
+    const acctKey = institution + '|' + account;
+    if (!accountMap[acctKey]) accountMap[acctKey] = { institution, account, value: 0, cost: 0, unrealized: 0, positions: 0 };
+    accountMap[acctKey].value += value;
+    accountMap[acctKey].cost += cost;
+    accountMap[acctKey].unrealized += unrealized;
+    accountMap[acctKey].positions += 1;
   });
 
   const byTickerRows = Object.keys(tickerMap).map(k => {
     const x = tickerMap[k];
-    return [x.ticker, x.security, x.qty, x.value, x.cost, x.unrealized, x.cost ? x.unrealized / x.cost : '', totalValue ? x.value / totalValue : '', Object.keys(x.accounts).length];
-  }).sort((a, b) => b[3] - a[3]);
+    return [
+      x.ticker,
+      x.security,
+      x.qty,
+      x.value,
+      x.cost,
+      x.unrealized,
+      x.cost ? x.unrealized / x.cost : '',
+      totalValue ? x.value / totalValue : '',
+      Object.keys(x.accounts).length
+    ];
+  }).sort((a, b) => safeNumber_(b[3]) - safeNumber_(a[3]));
 
   const byAccountRows = Object.keys(accountMap).map(k => {
     const x = accountMap[k];
-    return [x.institution, x.account, x.value, x.cost, x.unrealized, x.cost ? x.unrealized / x.cost : '', totalValue ? x.value / totalValue : '', x.positions];
-  }).sort((a, b) => b[2] - a[2]);
+    return [
+      x.institution,
+      x.account,
+      x.value,
+      x.cost,
+      x.unrealized,
+      x.cost ? x.unrealized / x.cost : '',
+      totalValue ? x.value / totalValue : '',
+      x.positions
+    ];
+  }).sort((a, b) => safeNumber_(b[2]) - safeNumber_(a[2]));
 
-  const totalRows = [[totalValue, totalCost, totalUnrealized, totalCost ? totalUnrealized / totalCost : '', holdingsRows.length, Object.keys(uniqueTickers).length, linkedItems, now_()]];
+  const totalRows = [[
+    totalValue,
+    totalCost,
+    totalUnrealized,
+    totalCost ? totalUnrealized / totalCost : '',
+    holdingsRows.length,
+    Object.keys(uniqueTickers).length,
+    linkedItems,
+    now_()
+  ]];
 
   replaceSheetData_(ss.getSheetByName(SHEETS.byTicker), HEADERS.byTicker, byTickerRows);
   replaceSheetData_(ss.getSheetByName(SHEETS.byAccount), HEADERS.byAccount, byAccountRows);
@@ -588,8 +620,15 @@ function mapBy_(arr, key) {
 }
 
 function getUserKey_() {
-  const email = Session.getActiveUser().getEmail();
-  return email || 'google-sheets-user';
+  const props = PropertiesService.getUserProperties();
+  let userId = props.getProperty(PROPS.safeClientUserId);
+
+  if (!userId) {
+    userId = 'sheets_user_' + Utilities.getUuid().replace(/-/g, '');
+    props.setProperty(PROPS.safeClientUserId, userId);
+  }
+
+  return userId;
 }
 
 function now_() {
