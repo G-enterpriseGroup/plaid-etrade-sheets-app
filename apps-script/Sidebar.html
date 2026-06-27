@@ -3,69 +3,237 @@
 <head>
   <base target="_top">
   <style>
-    body { margin:0; padding:14px; font-family:Arial,sans-serif; background:#0b1020; color:#e5e7eb; }
-    .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
-    h2 { margin:0; font-size:18px; }
-    .sub, .muted { color:#9ca3af; font-size:12px; }
-    .card { background:#111827; border:1px solid #253044; border-radius:12px; padding:12px; margin-bottom:12px; }
-    button { width:100%; border:0; border-radius:10px; padding:11px; margin-top:8px; color:white; background:#2563eb; font-weight:800; cursor:pointer; }
-    .green { background:#16a34a; }
-    .gray { background:#374151; }
-    .gear { width:36px; height:36px; padding:0; margin:0; background:#1f2937; font-size:18px; }
+    :root { --bg:#0b1020; --card:#111827; --panel:#0f172a; --text:#e5e7eb; --muted:#9ca3af; --blue:#2563eb; --green:#16a34a; --red:#dc2626; --border:#253044; --soft:#1f2937; }
+    body { margin:0; font-family:Arial,sans-serif; background:var(--bg); color:var(--text); }
+    .appbar { position:sticky; top:0; z-index:3; display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:#080d1b; border-bottom:1px solid var(--border); }
+    .brand { line-height:1.1; }
+    .brand b { font-size:16px; }
+    .brand span { display:block; color:var(--muted); font-size:11px; margin-top:2px; }
+    .toolbar { display:flex; gap:8px; }
+    .iconBtn { width:38px; height:34px; border-radius:10px; border:1px solid var(--border); background:var(--soft); color:var(--text); font-size:18px; cursor:pointer; }
+    .iconBtn.active { background:var(--blue); }
+    .wrap { padding:14px; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px; margin-bottom:12px; }
+    .row { display:flex; justify-content:space-between; gap:8px; align-items:center; }
+    .muted { color:var(--muted); font-size:12px; }
     .badge { display:inline-block; padding:4px 8px; border-radius:999px; background:#172554; color:#bfdbfe; font-size:11px; font-weight:800; }
-    .settings { display:none; }
-    .settings.open { display:block; }
-    .item { background:#050816; border:1px solid #253044; border-radius:10px; padding:9px; margin-top:8px; }
-    pre { white-space:pre-wrap; max-height:160px; overflow:auto; background:#050816; border:1px solid #253044; border-radius:10px; padding:10px; color:#9ca3af; font-size:12px; }
+    button { width:100%; border:0; border-radius:11px; padding:11px; margin-top:8px; color:white; background:var(--blue); font-weight:800; cursor:pointer; }
+    button.green { background:var(--green); } button.red { background:var(--red); } button.gray { background:#374151; }
+    button.small { padding:8px; font-size:12px; }
+    label { display:block; color:var(--muted); font-size:12px; font-weight:800; margin-top:8px; }
+    input, select { width:100%; box-sizing:border-box; margin-top:4px; padding:9px; border-radius:10px; border:1px solid var(--border); background:#050816; color:var(--text); }
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .overlay { display:none; position:fixed; inset:0; z-index:10; background:rgba(0,0,0,.55); padding:12px; }
+    .overlay.open { display:block; }
+    .modal { height:calc(100vh - 24px); background:var(--panel); border:1px solid var(--border); border-radius:18px; overflow:hidden; box-shadow:0 18px 60px rgba(0,0,0,.55); display:flex; flex-direction:column; }
+    .modalHead { display:flex; justify-content:space-between; align-items:center; padding:12px; border-bottom:1px solid var(--border); background:#0b1224; }
+    .close { width:34px; height:34px; border-radius:10px; margin:0; padding:0; background:#374151; }
+    .tabs { display:flex; gap:6px; padding:10px; border-bottom:1px solid var(--border); background:#0b1224; }
+    .tabBtn { margin:0; padding:9px; font-size:12px; background:#1f2937; }
+    .tabBtn.active { background:var(--blue); }
+    .modalBody { padding:12px; overflow:auto; }
+    .tab { display:none; }
+    .tab.active { display:block; }
+    .item { background:#050816; border:1px solid var(--border); border-radius:10px; padding:9px; margin-top:8px; }
+    pre { white-space:pre-wrap; max-height:260px; overflow:auto; background:#050816; border:1px solid var(--border); border-radius:10px; padding:10px; color:var(--muted); font-size:12px; }
   </style>
 </head>
 <body>
-  <div class="top">
-    <div><h2>Portfolio Link</h2><div class="sub">Brokerage dashboard</div></div>
-    <button class="gear" onclick="toggleSettings()">⚙️</button>
+  <div class="appbar">
+    <div class="brand"><b>Portfolio Link</b><span>Brokerage dashboard</span></div>
+    <div class="toolbar">
+      <button class="iconBtn active" id="homeIcon" title="Home" onclick="goHome()">🏠</button>
+      <button class="iconBtn" id="gearIcon" title="Settings" onclick="openSettings()">⚙️</button>
+    </div>
   </div>
 
-  <div class="card">
-    <b>Status</b> <span id="badge" class="badge">Loading</span>
-    <div id="status" class="muted" style="margin-top:8px;">Loading...</div>
-    <button class="gray" onclick="refreshState()">Refresh</button>
+  <div class="wrap" id="homePage">
+    <div class="card">
+      <div class="row"><b>Main Page</b><span id="badge" class="badge">Loading</span></div>
+      <div id="status" class="muted" style="margin-top:8px;">Loading...</div>
+      <button class="gray small" onclick="refreshState()">Refresh Status</button>
+    </div>
+
+    <div class="card">
+      <b>Holdings</b>
+      <div class="muted">Refreshes Holdings, By Ticker, By Account, and Portfolio Total.</div>
+      <button class="green" onclick="pullHoldings()">Pull Holdings Now</button>
+    </div>
+
+    <div class="card">
+      <b>Transactions</b>
+      <div class="muted">Default is ITD. Append mode keeps old transactions and skips duplicates.</div>
+
+      <label>Date Range</label>
+      <select id="dateMode" onchange="toggleCustomDates()">
+        <option value="itd">ITD - inception to date</option>
+        <option value="custom">Custom date range</option>
+      </select>
+
+      <div id="customDates" style="display:none;">
+        <div class="grid2">
+          <div><label>Start</label><input id="startDate" type="date"></div>
+          <div><label>End</label><input id="endDate" type="date"></div>
+        </div>
+      </div>
+
+      <label>Write Mode</label>
+      <select id="writeMode">
+        <option value="append">Append only - keep old transactions</option>
+        <option value="replace">Replace tab - requires confirmation</option>
+      </select>
+
+      <button onclick="pullTransactions()">Pull Transactions</button>
+    </div>
   </div>
 
-  <div id="settings" class="card settings">
-    <b>Settings</b>
-    <div class="muted">Payment and plan options will be added here.</div>
-    <button class="gray" onclick="managePlan()">Manage Subscription</button>
-    <div class="muted" style="margin-top:8px;">Users connect through your service. Provider setup is not shown here.</div>
-  </div>
+  <div class="overlay" id="settingsOverlay">
+    <div class="modal">
+      <div class="modalHead">
+        <div><b>Settings</b><div class="muted">Connections, accounts, log, subscription</div></div>
+        <button class="close" onclick="closeSettings()">✕</button>
+      </div>
+      <div class="tabs">
+        <button class="tabBtn active" id="tabConnectBtn" onclick="showTab('connect')">Connect</button>
+        <button class="tabBtn" id="tabAccountsBtn" onclick="showTab('accounts')">Accounts</button>
+        <button class="tabBtn" id="tabSubBtn" onclick="showTab('sub')">Plan</button>
+        <button class="tabBtn" id="tabLogBtn" onclick="showTab('log')">Log</button>
+      </div>
+      <div class="modalBody">
+        <div class="tab active" id="tabConnect">
+          <div class="card">
+            <b>Link Brokerage</b>
+            <div class="muted">Secure login opens in a larger popup. Users never enter provider ID/secrets.</div>
+            <button class="green" onclick="connectBrokerage()">Connect E*TRADE / Brokerage</button>
+          </div>
+          <div class="card">
+            <b>Repair</b>
+            <div class="muted">Use this if tabs are missing or layout is broken.</div>
+            <button class="gray" onclick="setupTabs()">Setup / Repair Tabs</button>
+          </div>
+        </div>
 
-  <div class="card">
-    <b>1. Link Brokerage</b>
-    <div class="muted">Secure login opens in a larger popup.</div>
-    <button class="green" onclick="connectBrokerage()">Connect E*TRADE / Brokerage</button>
-  </div>
+        <div class="tab" id="tabAccounts">
+          <div class="card"><b>Linked Accounts</b><div id="items" class="muted">Loading...</div></div>
+        </div>
 
-  <div class="card">
-    <b>2. Pull Data</b>
-    <button onclick="pullHoldings()">Pull Holdings Now</button>
-    <button onclick="pullTransactions()">Pull Transactions - 365 Days</button>
-    <button class="gray" onclick="setupTabs()">Setup / Repair Tabs</button>
-  </div>
+        <div class="tab" id="tabSub">
+          <div class="card">
+            <b>Subscription</b>
+            <div class="muted">Payment links will go here later.</div>
+            <button class="gray" onclick="managePlan()">Manage Subscription</button>
+          </div>
+        </div>
 
-  <div class="card"><b>Linked Accounts</b><div id="items" class="muted">Loading...</div></div>
-  <div class="card"><b>Log</b><pre id="log">Ready.</pre></div>
+        <div class="tab" id="tabLog">
+          <div class="card"><b>Log</b><pre id="log">Ready.</pre><button class="gray small" onclick="clearLog()">Clear Log</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
 
 <script>
-function log(m){var e=document.getElementById('log');e.textContent='['+new Date().toLocaleTimeString()+'] '+m+'\n'+e.textContent;}
-function toggleSettings(){document.getElementById('settings').classList.toggle('open');}
-function managePlan(){alert('Subscription links will be added in the next build.');}
-function refreshState(){google.script.run.withSuccessHandler(renderState).withFailureHandler(showError).getDashboardState();}
-function renderState(s){document.getElementById('badge').textContent=s.linkedCount>0?'Linked':'Trial';document.getElementById('status').textContent='Environment: '+s.env+' | Linked accounts: '+s.linkedCount+' | Token memory: '+s.tokenScope;renderItems(s.linkedItems||[]);}
-function connectBrokerage(){log('Opening secure login popup...');google.script.run.withSuccessHandler(function(){log('Popup opened.');}).withFailureHandler(showError).showPlaidConnectModal();}
-function setupTabs(){log('Setting up tabs...');google.script.run.withSuccessHandler(function(m){log(m);refreshState();}).withFailureHandler(showError).setupDashboard();}
-function pullHoldings(){log('Pulling holdings...');google.script.run.withSuccessHandler(function(r){log(r.message+' Rows: '+r.rows);refreshState();}).withFailureHandler(showError).pullHoldingsToSheet();}
-function pullTransactions(){log('Pulling transactions...');google.script.run.withSuccessHandler(function(r){log(r.message+' Rows: '+r.rows);}).withFailureHandler(showError).pullTransactions365();}
-function renderItems(items){var el=document.getElementById('items');if(!items.length){el.textContent='No brokerage linked yet.';return;}el.innerHTML='';items.forEach(function(x){var div=document.createElement('div');div.className='item';div.textContent=(x.institution_name||'Brokerage')+' | Last pull: '+(x.last_successful_pull||'Never');el.appendChild(div);});}
-function showError(err){var msg=err&&err.message?err.message:String(err);log('ERROR: '+msg);alert(msg);}
+let latestState = null;
+
+function log(m) {
+  const e = document.getElementById('log');
+  e.textContent = '[' + new Date().toLocaleTimeString() + '] ' + m + '\n' + e.textContent;
+}
+
+function clearLog() { document.getElementById('log').textContent = 'Ready.'; }
+function goHome() { document.getElementById('homeIcon').classList.add('active'); document.getElementById('gearIcon').classList.remove('active'); closeSettings(false); }
+function openSettings() { document.getElementById('settingsOverlay').classList.add('open'); document.getElementById('gearIcon').classList.add('active'); document.getElementById('homeIcon').classList.remove('active'); refreshState(); }
+function closeSettings(resetIcons) { document.getElementById('settingsOverlay').classList.remove('open'); if (resetIcons !== false) goHome(); }
+
+function showTab(name) {
+  ['connect','accounts','sub','log'].forEach(function(x) {
+    document.getElementById('tab' + cap(x)).classList.toggle('active', x === name);
+    document.getElementById('tab' + cap(x) + 'Btn').classList.toggle('active', x === name);
+  });
+}
+function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+function refreshState() {
+  google.script.run.withSuccessHandler(renderState).withFailureHandler(showError).getDashboardState();
+}
+
+function renderState(s) {
+  latestState = s;
+  document.getElementById('badge').textContent = s.linkedCount > 0 ? 'Linked' : 'Trial';
+  document.getElementById('status').textContent = 'Environment: ' + s.env + ' | Linked accounts: ' + s.linkedCount + ' | Service: ' + ((s.hasClient && s.hasSecret) ? 'Ready' : 'Needs admin setup');
+  document.getElementById('startDate').value = s.defaultStartDate || '2000-01-01';
+  document.getElementById('endDate').value = s.today || '';
+  renderItems(s.linkedItems || []);
+}
+
+function toggleCustomDates() {
+  document.getElementById('customDates').style.display = document.getElementById('dateMode').value === 'custom' ? 'block' : 'none';
+}
+
+function connectBrokerage() {
+  log('Opening secure login popup...');
+  google.script.run.withSuccessHandler(function() { log('Popup opened. Finish login there, then refresh status.'); })
+    .withFailureHandler(showError)
+    .showPlaidConnectModal();
+}
+
+function setupTabs() {
+  log('Setting up tabs and removing Config tab...');
+  google.script.run.withSuccessHandler(function(m) { log(m); refreshState(); })
+    .withFailureHandler(showError)
+    .setupDashboard();
+}
+
+function pullHoldings() {
+  log('Pulling holdings...');
+  google.script.run.withSuccessHandler(function(r) { log(r.message + ' Rows: ' + r.rows); refreshState(); })
+    .withFailureHandler(showError)
+    .pullHoldingsToSheet();
+}
+
+function pullTransactions() {
+  const mode = document.getElementById('writeMode').value;
+  const dateMode = document.getElementById('dateMode').value;
+  const form = {
+    dateMode: dateMode,
+    writeMode: mode,
+    startDate: document.getElementById('startDate').value,
+    endDate: document.getElementById('endDate').value,
+    replaceConfirmed: false
+  };
+
+  if (mode === 'replace') {
+    const ok = confirm('Replace will wipe the current Transactions tab first. Continue?');
+    if (!ok) { log('Replace cancelled. Old transactions kept.'); return; }
+    form.replaceConfirmed = true;
+  }
+
+  log('Pulling transactions in ' + mode + ' mode...');
+  google.script.run.withSuccessHandler(function(r) {
+      log(r.message + ' Pulled: ' + r.rowsPulled + ' Added: ' + r.rowsAdded + ' Duplicates skipped: ' + r.skippedDuplicates);
+    })
+    .withFailureHandler(showError)
+    .pullTransactionsFromSidebar(form);
+}
+
+function renderItems(items) {
+  const el = document.getElementById('items');
+  if (!items.length) { el.textContent = 'No brokerage linked yet.'; return; }
+  el.innerHTML = '';
+  items.forEach(function(x) {
+    const div = document.createElement('div');
+    div.className = 'item';
+    div.innerHTML = '<b>' + esc(x.institution_name || 'Brokerage') + '</b><br>' +
+      '<span class="muted">Linked: ' + esc(x.linked_at || '') + '</span><br>' +
+      '<span class="muted">Last pull: ' + esc(x.last_successful_pull || 'Never') + '</span>';
+    el.appendChild(div);
+  });
+}
+
+function managePlan() { alert('Subscription links will be added in the paid backend build.'); }
+function showError(err) { const msg = err && err.message ? err.message : String(err); log('ERROR: ' + msg); alert(msg); }
+function esc(v) { return String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
+
 refreshState();
 </script>
 </body>
