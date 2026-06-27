@@ -1,11 +1,15 @@
-# Secrets - never commit
+# Secrets
 .env
-*.env
 Secrets.Env
+*.env
 plaid_access_tokens.json
 .clasprc.json
 
-# Local exports
+# Python local
+__pycache__/
+*.pyc
+.venv/
+venv/
 exports/
 *.csv
 *.xlsx
@@ -13,14 +17,8 @@ exports/
 # Node / clasp
 node_modules/
 npm-debug.log*
-
-# Python local
-__pycache__/
-*.pyc
-.venv/
-venv/
-
-# Mac / IDE
 .DS_Store
+
+# Local editor
 .vscode/
 .idea/
