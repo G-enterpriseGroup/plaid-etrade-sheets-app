@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { margin:0; padding:14px; font-family:Arial,sans-serif; background:#0b1020; color:#e5e7eb; }
+    .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+    h2 { margin:0; font-size:18px; }
+    .sub, .muted { color:#9ca3af; font-size:12px; }
+    .card { background:#111827; border:1px solid #253044; border-radius:12px; padding:12px; margin-bottom:12px; }
+    button { width:100%; border:0; border-radius:10px; padding:11px; margin-top:8px; color:white; background:#2563eb; font-weight:800; cursor:pointer; }
+    .green { background:#16a34a; }
+    .gray { background:#374151; }
+    .gear { width:36px; height:36px; padding:0; margin:0; background:#1f2937; font-size:18px; }
+    .badge { display:inline-block; padding:4px 8px; border-radius:999px; background:#172554; color:#bfdbfe; font-size:11px; font-weight:800; }
+    .settings { display:none; }
+    .settings.open { display:block; }
+    .item { background:#050816; border:1px solid #253044; border-radius:10px; padding:9px; margin-top:8px; }
+    pre { white-space:pre-wrap; max-height:160px; overflow:auto; background:#050816; border:1px solid #253044; border-radius:10px; padding:10px; color:#9ca3af; font-size:12px; }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div><h2>Portfolio Link</h2><div class="sub">Brokerage dashboard</div></div>
+    <button class="gear" onclick="toggleSettings()">⚙️</button>
+  </div>
+
+  <div class="card">
+    <b>Status</b> <span id="badge" class="badge">Loading</span>
+    <div id="status" class="muted" style="margin-top:8px;">Loading...</div>
+    <button class="gray" onclick="refreshState()">Refresh</button>
+  </div>
+
+  <div id="settings" class="card settings">
+    <b>Settings</b>
+    <div class="muted">Payment and plan options will be added here.</div>
+    <button class="gray" onclick="managePlan()">Manage Subscription</button>
+    <div class="muted" style="margin-top:8px;">Users connect through your service. Provider setup is not shown here.</div>
+  </div>
+
+  <div class="card">
+    <b>1. Link Brokerage</b>
+    <div class="muted">Secure login opens in a larger popup.</div>
+    <button class="green" onclick="connectBrokerage()">Connect E*TRADE / Brokerage</button>
+  </div>
+
+  <div class="card">
+    <b>2. Pull Data</b>
+    <button onclick="pullHoldings()">Pull Holdings Now</button>
+    <button onclick="pullTransactions()">Pull Transactions - 365 Days</button>
+    <button class="gray" onclick="setupTabs()">Setup / Repair Tabs</button>
+  </div>
+
+  <div class="card"><b>Linked Accounts</b><div id="items" class="muted">Loading...</div></div>
+  <div class="card"><b>Log</b><pre id="log">Ready.</pre></div>
+
+<script>
+function log(m){var e=document.getElementById('log');e.textContent='['+new Date().toLocaleTimeString()+'] '+m+'\n'+e.textContent;}
+function toggleSettings(){document.getElementById('settings').classList.toggle('open');}
+function managePlan(){alert('Subscription links will be added in the next build.');}
+function refreshState(){google.script.run.withSuccessHandler(renderState).withFailureHandler(showError).getDashboardState();}
+function renderState(s){document.getElementById('badge').textContent=s.linkedCount>0?'Linked':'Trial';document.getElementById('status').textContent='Environment: '+s.env+' | Linked accounts: '+s.linkedCount+' | Token memory: '+s.tokenScope;renderItems(s.linkedItems||[]);}
+function connectBrokerage(){log('Opening secure login popup...');google.script.run.withSuccessHandler(function(){log('Popup opened.');}).withFailureHandler(showError).showPlaidConnectModal();}
+function setupTabs(){log('Setting up tabs...');google.script.run.withSuccessHandler(function(m){log(m);refreshState();}).withFailureHandler(showError).setupDashboard();}
+function pullHoldings(){log('Pulling holdings...');google.script.run.withSuccessHandler(function(r){log(r.message+' Rows: '+r.rows);refreshState();}).withFailureHandler(showError).pullHoldingsToSheet();}
+function pullTransactions(){log('Pulling transactions...');google.script.run.withSuccessHandler(function(r){log(r.message+' Rows: '+r.rows);}).withFailureHandler(showError).pullTransactions365();}
+function renderItems(items){var el=document.getElementById('items');if(!items.length){el.textContent='No brokerage linked yet.';return;}el.innerHTML='';items.forEach(function(x){var div=document.createElement('div');div.className='item';div.textContent=(x.institution_name||'Brokerage')+' | Last pull: '+(x.last_successful_pull||'Never');el.appendChild(div);});}
+function showError(err){var msg=err&&err.message?err.message:String(err);log('ERROR: '+msg);alert(msg);}
+refreshState();
+</script>
+</body>
+</html>
