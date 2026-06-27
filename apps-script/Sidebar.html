@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --card: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --blue: #2563eb;
+      --green: #16a34a;
+      --red: #dc2626;
+      --border: #253044;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 14px;
+    }
+    h2 { margin: 0 0 4px 0; }
+    .sub { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: bold;
+      margin-top: 9px;
+      color: var(--text);
+    }
+    input, select {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 9px;
+      margin-top: 4px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #0f172a;
+      color: var(--text);
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 8px;
+      border: 0;
+      border-radius: 9px;
+      color: white;
+      background: var(--blue);
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button.secondary { background: #475569; }
+    button.green { background: var(--green); }
+    button.danger { background: var(--red); }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #1f2937;
+      font-size: 12px;
+      margin: 2px 2px 2px 0;
+    }
+    .ok { color: #86efac; font-weight: bold; }
+    .bad { color: #fca5a5; font-weight: bold; }
+    .small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .item {
+      border: 1px solid var(--border);
+      background: #0f172a;
+      border-radius: 9px;
+      padding: 9px;
+      margin-top: 8px;
+    }
+    pre {
+      white-space: pre-wrap;
+      background: #020617;
+      color: #d1d5db;
+      padding: 10px;
+      border-radius: 9px;
+      max-height: 220px;
+      overflow: auto;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Plaid Brokerage</h2>
+  <div class="sub">E*TRADE / brokerage holdings dashboard</div>
+
+  <div class="card">
+    <b>System Status</b>
+    <div id="state" class="small">Loading...</div>
+    <button class="secondary" onclick="refreshState()">Refresh Status</button>
+  </div>
+
+  <div class="card">
+    <b>1. Plaid Settings</b>
+    <div class="small">Saved inside Apps Script Properties. Not stored in GitHub.</div>
+
+    <label>Plaid Client ID</label>
+    <input id="clientId" placeholder="Paste Plaid Client ID">
+
+    <label>Plaid Secret</label>
+    <input id="secret" type="password" placeholder="Paste Plaid Secret">
+
+    <label>Environment</label>
+    <select id="env">
+      <option value="sandbox">sandbox</option>
+      <option value="development">development</option>
+      <option value="production">production</option>
+    </select>
+
+    <label>Token Memory Scope</label>
+    <select id="tokenScope">
+      <option value="user">user - best for your personal login</option>
+      <option value="document">document - shared in this spreadsheet script</option>
+    </select>
+
+    <button onclick="saveSettings()">Save Settings</button>
+  </div>
+
+  <div class="card">
+    <b>2. Link Brokerage</b>
+    <div class="small">First time only. After linking, pulls use stored Plaid access token.</div>
+    <button class="green" onclick="connectBrokerage()">Connect E*TRADE / Brokerage</button>
+  </div>
+
+  <div class="card">
+    <b>3. Pull Data</b>
+    <button onclick="pullHoldings()">Pull Holdings Now</button>
+    <button onclick="pullTransactions()">Pull Transactions - 365 Days</button>
+    <button class="secondary" onclick="setupTabs()">Setup / Repair Tabs</button>
+  </div>
+
+  <div class="card">
+    <b>Linked Items</b>
+    <div id="items" class="small"></div>
+  </div>
+
+  <div class="card">
+    <b>Danger Zone</b>
+    <button class="danger" onclick="resetTokens()">Reset Token Memory</button>
+  </div>
+
+  <div class="card">
+    <b>Log</b>
+    <pre id="log"></pre>
+  </div>
+
+<script>
+function log(message) {
+  const stamp = new Date().toLocaleTimeString();
+  const el = document.getElementById('log');
+  el.textContent = '[' + stamp + '] ' + message + '\n' + el.textContent;
+}
+
+function refreshState() {
+  google.script.run
+    .withSuccessHandler(renderState)
+    .withFailureHandler(showError)
+    .getDashboardState();
+}
+
+function renderState(state) {
+  document.getElementById('state').innerHTML =
+    '<div class="pill">Env: <b>' + escapeHtml(state.env) + '</b></div>' +
+    '<div class="pill">Client ID: ' + yesNo(state.hasClient) + '</div>' +
+    '<div class="pill">Secret: ' + yesNo(state.hasSecret) + '</div>' +
+    '<div class="pill">Linked: <b>' + state.linkedCount + '</b></div>' +
+    '<div class="pill">Scope: <b>' + escapeHtml(state.tokenScope) + '</b></div>' +
+    '<div class="small">Sheet ID: ' + escapeHtml(state.spreadsheetId) + '</div>';
+
+  document.getElementById('env').value = state.env || 'sandbox';
+  document.getElementById('tokenScope').value = state.tokenScope || 'user';
+  renderItems(state.linkedItems || []);
+}
+
+function yesNo(value) {
+  return value ? '<span class="ok">YES</span>' : '<span class="bad">NO</span>';
+}
+
+function renderItems(items) {
+  const el = document.getElementById('items');
+  if (!items.length) {
+    el.innerHTML = 'No brokerage linked yet.';
+    return;
+  }
+
+  el.innerHTML = items.map(function(item) {
+    const itemId = escapeHtml(item.item_id || '');
+    return '<div class="item">' +
+      '<b>' + escapeHtml(item.institution_name || 'Unknown') + '</b><br>' +
+      '<span class="small">Linked: ' + escapeHtml(item.linked_at || '') + '</span><br>' +
+      '<span class="small">Last pull: ' + escapeHtml(item.last_successful_pull || '') + '</span><br>' +
+      '<span class="small">Last error: ' + escapeHtml(item.last_error || '') + '</span>' +
+      '<button class="secondary" onclick="updateItem(\'' + itemId + '\')">Fix / Update Login</button>' +
+      '<button class="danger" onclick="deleteItem(\'' + itemId + '\')">Remove Local Token</button>' +
+      '</div>';
+  }).join('');
+}
+
+function saveSettings() {
+  const form = {
+    clientId: document.getElementById('clientId').value,
+    secret: document.getElementById('secret').value,
+    env: document.getElementById('env').value,
+    tokenScope: document.getElementById('tokenScope').value
+  };
+
+  log('Saving Plaid settings...');
+  google.script.run
+    .withSuccessHandler(function(state) {
+      document.getElementById('clientId').value = '';
+      document.getElementById('secret').value = '';
+      log('Settings saved.');
+      renderState(state);
+    })
+    .withFailureHandler(showError)
+    .savePlaidSettings(form);
+}
+
+function connectBrokerage() {
+  log('Creating Plaid Link token...');
+  google.script.run
+    .withSuccessHandler(function(linkToken) {
+      openPlaid(linkToken, 'create', null);
+    })
+    .withFailureHandler(showError)
+    .createPlaidLinkToken();
+}
+
+function updateItem(itemId) {
+  log('Creating Plaid update-mode token...');
+  google.script.run
+    .withSuccessHandler(function(linkToken) {
+      openPlaid(linkToken, 'update', itemId);
+    })
+    .withFailureHandler(showError)
+    .createPlaidUpdateLinkToken(itemId);
+}
+
+function openPlaid(linkToken, mode, itemId) {
+  const handler = Plaid.create({
+    token: linkToken,
+    onSuccess: function(public_token, metadata) {
+      if (mode === 'update') {
+        google.script.run
+          .withSuccessHandler(function(state) {
+            log('Update mode completed.');
+            renderState(state);
+          })
+          .withFailureHandler(showError)
+          .markUpdateModeSuccess(itemId);
+        return;
+      }
+
+      log('Exchanging public token...');
+      google.script.run
+        .withSuccessHandler(function(result) {
+          log('Brokerage linked successfully.');
+          renderState(result.state);
+        })
+        .withFailureHandler(showError)
+        .exchangePublicToken(public_token, metadata);
+    },
+    onExit: function(err) {
+      if (err) log('Plaid Link error: ' + err.error_message);
+      else log('Plaid Link closed.');
+    }
+  });
+  handler.open();
+}
+
+function setupTabs() {
+  log('Setting up tabs...');
+  google.script.run
+    .withSuccessHandler(function(message) {
+      log(message);
+      refreshState();
+    })
+    .withFailureHandler(showError)
+    .setupDashboard();
+}
+
+function pullHoldings() {
+  log('Pulling holdings...');
+  google.script.run
+    .withSuccessHandler(function(res) {
+      log(res.message + ' Rows: ' + res.rows);
+      refreshState();
+    })
+    .withFailureHandler(showError)
+    .pullHoldingsToSheet();
+}
+
+function pullTransactions() {
+  log('Pulling investment transactions...');
+  google.script.run
+    .withSuccessHandler(function(res) {
+      log(res.message + ' Rows: ' + res.rows);
+    })
+    .withFailureHandler(showError)
+    .pullTransactions365();
+}
+
+function deleteItem(itemId) {
+  if (!confirm('Remove this saved token? You may need to relink.')) return;
+  google.script.run
+    .withSuccessHandler(function(state) {
+      log('Local token removed.');
+      renderState(state);
+    })
+    .withFailureHandler(showError)
+    .deleteLinkedItem(itemId);
+}
+
+function resetTokens() {
+  if (!confirm('Reset all token memory for this selected scope? You will need to relink.')) return;
+  google.script.run
+    .withSuccessHandler(function(state) {
+      log('Token memory reset.');
+      renderState(state);
+    })
+    .withFailureHandler(showError)
+    .resetTokenMemory();
+}
+
+function showError(err) {
+  const msg = err && err.message ? err.message : String(err);
+  log('ERROR: ' + msg);
+  alert(msg);
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+refreshState();
+</script>
+</body>
+</html>
