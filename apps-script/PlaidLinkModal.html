@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --card: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --blue: #2563eb;
+      --green: #16a34a;
+      --red: #dc2626;
+      --border: #253044;
+    }
+    body {
+      margin: 0;
+      padding: 22px;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .wrap {
+      max-width: 680px;
+      margin: 0 auto;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 22px;
+    }
+    h2 { margin: 0 0 8px 0; }
+    p { color: var(--muted); line-height: 1.45; }
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 12px;
+      padding: 14px;
+      color: white;
+      background: var(--blue);
+      font-weight: 800;
+      cursor: pointer;
+      margin-top: 12px;
+      font-size: 15px;
+    }
+    button.green { background: var(--green); }
+    button.gray { background: #374151; }
+    .log {
+      margin-top: 14px;
+      background: #050816;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      min-height: 70px;
+      white-space: pre-wrap;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .ok { color: #22c55e; font-weight: 800; }
+    .bad { color: #f87171; font-weight: 800; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h2>Connect Brokerage</h2>
+      <p>This opens Plaid in a full modal window so the bank login screen is not squeezed in the sidebar.</p>
+      <button class="green" onclick="openPlaid()">Open Plaid Secure Login</button>
+      <button class="gray" onclick="google.script.host.close()">Close</button>
+      <div id="log" class="log">Ready.</div>
+    </div>
+  </div>
+
+<script>
+const LINK_TOKEN = '<?= linkToken ?>';
+const MODE = '<?= mode ?>';
+const ITEM_ID = '<?= itemId ?>';
+
+function log(msg, cls) {
+  const el = document.getElementById('log');
+  const stamp = new Date().toLocaleTimeString();
+  el.innerHTML = '[' + stamp + '] ' + (cls ? '<span class="' + cls + '">' + escapeHtml(msg) + '</span>' : escapeHtml(msg)) + '\n' + el.innerHTML;
+}
+
+function openPlaid() {
+  log('Opening Plaid...');
+
+  const handler = Plaid.create({
+    token: LINK_TOKEN,
+    onSuccess: function(public_token, metadata) {
+      log('Plaid login successful. Saving connection...');
+
+      if (MODE === 'update') {
+        google.script.run
+          .withSuccessHandler(function() {
+            log('Connection updated. You can close this window.', 'ok');
+            setTimeout(function(){ google.script.host.close(); }, 900);
+          })
+          .withFailureHandler(showError)
+          .markUpdateModeSuccess(ITEM_ID);
+        return;
+      }
+
+      google.script.run
+        .withSuccessHandler(function() {
+          log('Brokerage connected. You can close this window.', 'ok');
+          setTimeout(function(){ google.script.host.close(); }, 900);
+        })
+        .withFailureHandler(showError)
+        .exchangePublicToken(public_token, metadata);
+    },
+    onExit: function(err) {
+      if (err) log('Plaid exited: ' + err.error_message, 'bad');
+      else log('Plaid closed.');
+    }
+  });
+
+  handler.open();
+}
+
+function showError(err) {
+  const msg = err && err.message ? err.message : String(err);
+  log('ERROR: ' + msg, 'bad');
+  alert(msg);
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+</script>
+</body>
+</html>
