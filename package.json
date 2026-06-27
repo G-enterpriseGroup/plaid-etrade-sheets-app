@@ -1,0 +1,14 @@
+{
+  "name": "plaid-etrade-sheets-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Google Sheets + Apps Script dashboard for Plaid brokerage holdings and transactions.",
+  "scripts": {
+    "check": "node scripts/check_repo.js",
+    "push:apps-script": "cd apps-script && clasp push",
+    "pull:apps-script": "cd apps-script && clasp pull"
+  },
+  "devDependencies": {
+    "@google/clasp": "latest"
+  }
+}
