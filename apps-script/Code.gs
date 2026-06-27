@@ -1,7 +1,7 @@
 /**
  * Portfolio Link - Google Apps Script backend
  * Paste this as Code.gs in Apps Script.
- * Version: home-settings-ui-itd-append-v3
+ * Version: simplified-two-tabs-account-selection-v4
  */
 
 const APP_NAME = 'Portfolio Link';
@@ -10,13 +10,10 @@ const ITD_START_DATE = '2000-01-01';
 
 const SHEETS = {
   holdings: 'Holdings',
-  byTicker: 'By Ticker',
-  byAccount: 'By Account',
-  total: 'Portfolio Total',
   transactions: 'Transactions'
 };
 
-const OLD_SHEETS_TO_REMOVE = ['Config'];
+const OLD_SHEETS_TO_REMOVE = ['Config', 'By Ticker', 'By Account', 'Portfolio Total'];
 
 const PROPS = {
   clientId: 'PLAID_CLIENT_ID',
@@ -37,19 +34,6 @@ const HEADERS = {
     'unrealized_gain_loss', 'unrealized_gain_loss_pct', 'portfolio_weight',
     'account_weight', 'close_price', 'close_price_as_of', 'pulled_at', 'item_id'
   ],
-  byTicker: [
-    'ticker_symbol', 'security_name', 'total_quantity', 'total_market_value',
-    'total_cost_basis', 'total_unrealized_gain_loss', 'unrealized_gain_loss_pct',
-    'portfolio_weight', 'accounts'
-  ],
-  byAccount: [
-    'institution_name', 'account_name', 'total_market_value', 'total_cost_basis',
-    'total_unrealized_gain_loss', 'unrealized_gain_loss_pct', 'portfolio_weight', 'positions'
-  ],
-  total: [
-    'total_market_value', 'total_cost_basis', 'total_unrealized_gain_loss',
-    'total_unrealized_gain_loss_pct', 'positions', 'unique_tickers', 'linked_items', 'last_refresh'
-  ],
   transactions: [
     'institution_name', 'account_name', 'ticker_symbol', 'security_name',
     'type', 'subtype', 'date', 'name', 'quantity', 'price', 'amount', 'fees',
@@ -69,13 +53,6 @@ function addPortfolioMenu_() {
   SpreadsheetApp.getUi()
     .createMenu('Plaid Brokerage')
     .addItem('Open Dashboard', 'showDashboard')
-    .addSeparator()
-    .addItem('Setup / Repair Tabs', 'setupDashboard')
-    .addItem('Pull Holdings Now', 'pullHoldingsToSheet')
-    .addItem('Pull Transactions - ITD Append', 'pullTransactionsITDAppend')
-    .addSeparator()
-    .addItem('Show Linked Items', 'showLinkedItemsAlert')
-    .addItem('Reset Token Memory', 'resetTokenMemoryConfirm')
     .addToUi();
 }
 
@@ -111,12 +88,9 @@ function setupDashboard() {
   const ss = getSpreadsheet_();
   removeOldSheets_(ss);
   createOrRepairSheet_(ss, SHEETS.holdings, HEADERS.holdings, 2000, 30);
-  createOrRepairSheet_(ss, SHEETS.byTicker, HEADERS.byTicker, 1000, 20);
-  createOrRepairSheet_(ss, SHEETS.byAccount, HEADERS.byAccount, 1000, 20);
-  createOrRepairSheet_(ss, SHEETS.total, HEADERS.total, 200, 12);
   createOrRepairSheet_(ss, SHEETS.transactions, HEADERS.transactions, 5000, 40);
   formatFinanceTabs_();
-  return 'Dashboard tabs are ready. Config tab removed. Refresh the Sheet, then use Plaid Brokerage > Open Dashboard.';
+  return 'Simplified tabs are ready: Holdings and Transactions only.';
 }
 
 function removeOldSheets_(ss) {
@@ -189,6 +163,7 @@ function exchangePublicToken(publicToken, metadata) {
   });
 
   const institution = metadata && metadata.institution ? metadata.institution : {};
+  const accounts = normalizeMetadataAccounts_((metadata && metadata.accounts) || []);
   const record = {
     access_token: res.access_token,
     item_id: res.item_id,
@@ -198,7 +173,8 @@ function exchangePublicToken(publicToken, metadata) {
     last_successful_pull: '',
     last_error: '',
     environment: cfg.env,
-    metadata_accounts: metadata && metadata.accounts ? metadata.accounts : []
+    metadata_accounts: accounts,
+    selected_account_ids: accounts.map(function(a) { return a.account_id; })
   };
 
   upsertStoredItem_(record);
@@ -210,6 +186,20 @@ function markUpdateModeSuccess(itemId) {
   items.forEach(function(item) {
     if (item.item_id === itemId) item.last_update_mode = now_();
   });
+  setStoredItems_(items);
+  return getDashboardState();
+}
+
+function saveAccountSelection(payload) {
+  payload = payload || {};
+  const selectedByItem = payload.selectedByItem || {};
+  const items = getStoredItems_();
+
+  items.forEach(function(item) {
+    const acctIds = Array.isArray(selectedByItem[item.item_id]) ? selectedByItem[item.item_id] : [];
+    item.selected_account_ids = acctIds.map(String).filter(Boolean);
+  });
+
   setStoredItems_(items);
   return getDashboardState();
 }
@@ -238,7 +228,6 @@ function pullHoldingsToSheet() {
   allRows.sort(function(a, b) { return safeNumber_(b[13]) - safeNumber_(a[13]); });
 
   replaceSheetData_(getSpreadsheet_().getSheetByName(SHEETS.holdings), HEADERS.holdings, allRows);
-  writeSummaryTabs_(allRows, items.length);
   setStoredItems_(items);
 
   return {
@@ -258,9 +247,12 @@ function getHoldingsRowsForItem_(item) {
 
   const accounts = mapBy_(res.accounts || [], 'account_id');
   const securities = mapBy_(res.securities || [], 'security_id');
-  const rows = [];
+  refreshItemAccountsFromPlaid_(item, res.accounts || []);
 
+  const rows = [];
   (res.holdings || []).forEach(function(h) {
+    if (!accountIsSelected_(item, h.account_id)) return;
+
     const acct = accounts[h.account_id] || {};
     const sec = securities[h.security_id] || {};
     const quantity = num_(h.quantity);
@@ -299,63 +291,6 @@ function applyAccountWeights_(rows) {
     const key = r[0] + '|' + r[1] + '|' + r[3];
     r[18] = accountTotals[key] ? safeNumber_(r[13]) / accountTotals[key] : '';
   });
-}
-
-function writeSummaryTabs_(holdingsRows, linkedItems) {
-  const ss = getSpreadsheet_();
-  const tickerMap = {};
-  const accountMap = {};
-  const uniqueTickers = {};
-  let totalValue = 0;
-  let totalCost = 0;
-  let totalUnrealized = 0;
-
-  holdingsRows.forEach(function(r) {
-    const institution = r[0] || '';
-    const account = r[1] || '';
-    const ticker = r[6] || '(no ticker)';
-    const security = r[7] || '';
-    const qty = safeNumber_(r[10]);
-    const cost = safeNumber_(r[11]);
-    const value = safeNumber_(r[13]);
-    const unrealized = safeNumber_(r[15]);
-
-    totalValue += value;
-    totalCost += cost;
-    totalUnrealized += unrealized;
-    uniqueTickers[ticker] = true;
-
-    if (!tickerMap[ticker]) tickerMap[ticker] = { ticker: ticker, security: security, qty: 0, value: 0, cost: 0, unrealized: 0, accounts: {} };
-    tickerMap[ticker].qty += qty;
-    tickerMap[ticker].value += value;
-    tickerMap[ticker].cost += cost;
-    tickerMap[ticker].unrealized += unrealized;
-    tickerMap[ticker].accounts[account] = true;
-
-    const acctKey = institution + '|' + account;
-    if (!accountMap[acctKey]) accountMap[acctKey] = { institution: institution, account: account, value: 0, cost: 0, unrealized: 0, positions: 0 };
-    accountMap[acctKey].value += value;
-    accountMap[acctKey].cost += cost;
-    accountMap[acctKey].unrealized += unrealized;
-    accountMap[acctKey].positions += 1;
-  });
-
-  const byTickerRows = Object.keys(tickerMap).map(function(k) {
-    const x = tickerMap[k];
-    return [x.ticker, x.security, x.qty, x.value, x.cost, x.unrealized, x.cost ? x.unrealized / x.cost : '', totalValue ? x.value / totalValue : '', Object.keys(x.accounts).length];
-  }).sort(function(a, b) { return safeNumber_(b[3]) - safeNumber_(a[3]); });
-
-  const byAccountRows = Object.keys(accountMap).map(function(k) {
-    const x = accountMap[k];
-    return [x.institution, x.account, x.value, x.cost, x.unrealized, x.cost ? x.unrealized / x.cost : '', totalValue ? x.value / totalValue : '', x.positions];
-  }).sort(function(a, b) { return safeNumber_(b[2]) - safeNumber_(a[2]); });
-
-  const totalRows = [[totalValue, totalCost, totalUnrealized, totalCost ? totalUnrealized / totalCost : '', holdingsRows.length, Object.keys(uniqueTickers).length, linkedItems, now_()]];
-
-  replaceSheetData_(ss.getSheetByName(SHEETS.byTicker), HEADERS.byTicker, byTickerRows);
-  replaceSheetData_(ss.getSheetByName(SHEETS.byAccount), HEADERS.byAccount, byAccountRows);
-  replaceSheetData_(ss.getSheetByName(SHEETS.total), HEADERS.total, totalRows);
-  formatFinanceTabs_();
 }
 
 function pullTransactions365() {
@@ -443,8 +378,11 @@ function getTransactionRowsForItem_(item, startDate, endDate) {
 
   const accounts = mapBy_((lastRes && lastRes.accounts) || [], 'account_id');
   const securities = mapBy_((lastRes && lastRes.securities) || [], 'security_id');
+  refreshItemAccountsFromPlaid_(item, (lastRes && lastRes.accounts) || []);
 
-  return allTx.map(function(t) {
+  return allTx.filter(function(t) {
+    return accountIsSelected_(item, t.account_id);
+  }).map(function(t) {
     const acct = accounts[t.account_id] || {};
     const sec = securities[t.security_id] || {};
     return [item.institution_name || '', acct.name || '', sec.ticker_symbol || '', sec.name || '', t.type || '', t.subtype || '', t.date || '', t.name || '', t.quantity || '', t.price || '', t.amount || '', t.fees || '', t.investment_transaction_id || transactionFallbackKey_(item, t), now_()];
@@ -491,6 +429,46 @@ function getExistingTransactionKeys_(sheet) {
 
 function transactionFallbackKey_(item, t) {
   return [item.item_id || '', t.account_id || '', t.date || '', t.name || '', t.amount || '', t.quantity || '', t.price || ''].join('|');
+}
+
+function accountIsSelected_(item, accountId) {
+  const selected = Array.isArray(item.selected_account_ids) ? item.selected_account_ids.map(String) : [];
+  if (!selected.length) return true;
+  return selected.indexOf(String(accountId || '')) !== -1;
+}
+
+function normalizeMetadataAccounts_(accounts) {
+  return (accounts || []).map(function(a) {
+    return {
+      account_id: String(a.id || a.account_id || ''),
+      name: a.name || '',
+      mask: a.mask || '',
+      type: a.type || '',
+      subtype: a.subtype || ''
+    };
+  }).filter(function(a) { return a.account_id; });
+}
+
+function refreshItemAccountsFromPlaid_(item, accounts) {
+  const normalized = normalizePlaidAccounts_(accounts || []);
+  if (!normalized.length) return;
+  item.metadata_accounts = normalized;
+  if (!Array.isArray(item.selected_account_ids)) {
+    item.selected_account_ids = normalized.map(function(a) { return a.account_id; });
+  }
+}
+
+function normalizePlaidAccounts_(accounts) {
+  return (accounts || []).map(function(a) {
+    return {
+      account_id: String(a.account_id || a.id || ''),
+      name: a.name || '',
+      official_name: a.official_name || '',
+      mask: a.mask || '',
+      type: a.type || '',
+      subtype: a.subtype || ''
+    };
+  }).filter(function(a) { return a.account_id; });
 }
 
 function plaidPost_(path, payload) {
@@ -599,6 +577,8 @@ function resetTokenMemoryConfirm() {
 }
 
 function stripSecretItem_(item) {
+  const accounts = Array.isArray(item.metadata_accounts) ? item.metadata_accounts : [];
+  const selected = Array.isArray(item.selected_account_ids) ? item.selected_account_ids.map(String) : accounts.map(function(a) { return String(a.account_id || ''); });
   return {
     item_id: item.item_id || '',
     institution_name: item.institution_name || '',
@@ -607,7 +587,9 @@ function stripSecretItem_(item) {
     last_successful_pull: item.last_successful_pull || '',
     last_update_mode: item.last_update_mode || '',
     environment: item.environment || '',
-    last_error: item.last_error || ''
+    last_error: item.last_error || '',
+    accounts: accounts,
+    selected_account_ids: selected
   };
 }
 
@@ -645,12 +627,7 @@ function formatFinanceTabs_() {
   const ss = getSpreadsheet_();
   formatColumns_(ss.getSheetByName(SHEETS.holdings), [12, 13, 14, 15, 16, 20], '$#,##0.00');
   formatColumns_(ss.getSheetByName(SHEETS.holdings), [17, 18, 19], '0.00%');
-  formatColumns_(ss.getSheetByName(SHEETS.byTicker), [4, 5, 6], '$#,##0.00');
-  formatColumns_(ss.getSheetByName(SHEETS.byTicker), [7, 8], '0.00%');
-  formatColumns_(ss.getSheetByName(SHEETS.byAccount), [3, 4, 5], '$#,##0.00');
-  formatColumns_(ss.getSheetByName(SHEETS.byAccount), [6, 7], '0.00%');
-  formatColumns_(ss.getSheetByName(SHEETS.total), [1, 2, 3], '$#,##0.00');
-  formatColumns_(ss.getSheetByName(SHEETS.total), [4], '0.00%');
+  formatColumns_(ss.getSheetByName(SHEETS.transactions), [9, 10, 11, 12], '$#,##0.00');
 }
 
 function formatColumns_(sheet, cols, numberFormat) {
