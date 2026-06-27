@@ -1,19 +1,22 @@
 /**
  * Portfolio Link - Google Apps Script backend
  * Paste this as Code.gs in Apps Script.
+ * Version: home-settings-ui-itd-append-v3
  */
 
 const APP_NAME = 'Portfolio Link';
 const DEFAULT_SPREADSHEET_ID = '1sgNWMAZEIdOBargwH8ILs_oB-1HQzUoVssaqnsujY2g';
+const ITD_START_DATE = '2000-01-01';
 
 const SHEETS = {
   holdings: 'Holdings',
   byTicker: 'By Ticker',
   byAccount: 'By Account',
   total: 'Portfolio Total',
-  transactions: 'Transactions',
-  config: 'Config'
+  transactions: 'Transactions'
 };
+
+const OLD_SHEETS_TO_REMOVE = ['Config'];
 
 const PROPS = {
   clientId: 'PLAID_CLIENT_ID',
@@ -51,8 +54,7 @@ const HEADERS = {
     'institution_name', 'account_name', 'ticker_symbol', 'security_name',
     'type', 'subtype', 'date', 'name', 'quantity', 'price', 'amount', 'fees',
     'transaction_id', 'pulled_at'
-  ],
-  config: ['Setting', 'Value', 'Notes']
+  ]
 };
 
 function onOpen(e) {
@@ -70,7 +72,7 @@ function addPortfolioMenu_() {
     .addSeparator()
     .addItem('Setup / Repair Tabs', 'setupDashboard')
     .addItem('Pull Holdings Now', 'pullHoldingsToSheet')
-    .addItem('Pull Transactions - 365 Days', 'pullTransactions365')
+    .addItem('Pull Transactions - ITD Append', 'pullTransactionsITDAppend')
     .addSeparator()
     .addItem('Show Linked Items', 'showLinkedItemsAlert')
     .addItem('Reset Token Memory', 'resetTokenMemoryConfirm')
@@ -99,32 +101,29 @@ function getDashboardState() {
     hasSecret: Boolean(cfg.secret),
     tokenScope: getTokenScope_(),
     linkedCount: items.length,
-    linkedItems: items.map(stripSecretItem_)
+    linkedItems: items.map(stripSecretItem_),
+    defaultStartDate: ITD_START_DATE,
+    today: ymd_(new Date())
   };
 }
 
 function setupDashboard() {
   const ss = getSpreadsheet_();
+  removeOldSheets_(ss);
   createOrRepairSheet_(ss, SHEETS.holdings, HEADERS.holdings, 2000, 30);
   createOrRepairSheet_(ss, SHEETS.byTicker, HEADERS.byTicker, 1000, 20);
   createOrRepairSheet_(ss, SHEETS.byAccount, HEADERS.byAccount, 1000, 20);
   createOrRepairSheet_(ss, SHEETS.total, HEADERS.total, 200, 12);
   createOrRepairSheet_(ss, SHEETS.transactions, HEADERS.transactions, 5000, 40);
-  createOrRepairSheet_(ss, SHEETS.config, HEADERS.config, 200, 10);
+  formatFinanceTabs_();
+  return 'Dashboard tabs are ready. Config tab removed. Refresh the Sheet, then use Plaid Brokerage > Open Dashboard.';
+}
 
-  const configSheet = ss.getSheetByName(SHEETS.config);
-  configSheet.getRange(2, 1, 8, 3).setValues([
-    ['Spreadsheet ID', ss.getId(), 'Used by the Apps Script backend.'],
-    ['Environment', getPlaidEnv_(), 'sandbox first; production later.'],
-    ['Token Memory Scope', getTokenScope_(), 'user = per Google user.'],
-    ['GitHub Repo', 'G-enterpriseGroup/plaid-etrade-sheets-app', 'Source controlled app code.'],
-    ['Credential Rule', 'Service-owned', 'Customers should not enter provider credentials.'],
-    ['Relink Rule', 'Only when update mode is needed', 'Normal refresh uses saved item token.'],
-    ['Manual Editor Function', 'manualSetupFromEditor', 'Run this from Apps Script editor, not onOpen.'],
-    ['Last Setup', now_(), '']
-  ]);
-
-  return 'Dashboard tabs are ready. Refresh the Sheet, then use Plaid Brokerage > Open Dashboard.';
+function removeOldSheets_(ss) {
+  OLD_SHEETS_TO_REMOVE.forEach(function(name) {
+    const sh = ss.getSheetByName(name);
+    if (sh && ss.getSheets().length > 1) ss.deleteSheet(sh);
+  });
 }
 
 function savePlaidSettings(form) {
@@ -218,7 +217,7 @@ function markUpdateModeSuccess(itemId) {
 function pullHoldingsToSheet() {
   setupDashboard();
   const items = getStoredItems_();
-  if (!items.length) throw new Error('No linked brokerage items. Open dashboard and connect first.');
+  if (!items.length) throw new Error('No linked brokerage items. Open Settings and connect first.');
 
   const allRows = [];
   const errors = [];
@@ -360,26 +359,61 @@ function writeSummaryTabs_(holdingsRows, linkedItems) {
 }
 
 function pullTransactions365() {
-  return pullInvestmentTransactionsToSheet(365);
+  return pullTransactionsFromSidebar({ dateMode: 'custom', startDate: daysAgoYmd_(365), endDate: ymd_(new Date()), writeMode: 'append' });
 }
 
-function pullInvestmentTransactionsToSheet(daysBack) {
+function pullTransactionsITDAppend() {
+  return pullTransactionsFromSidebar({ dateMode: 'itd', writeMode: 'append' });
+}
+
+function pullTransactionsFromSidebar(form) {
+  form = form || {};
   setupDashboard();
+
+  const dateMode = String(form.dateMode || 'itd').toLowerCase();
+  const writeMode = String(form.writeMode || 'append').toLowerCase();
+  const replaceConfirmed = Boolean(form.replaceConfirmed);
+
+  let startDate = dateMode === 'custom' ? String(form.startDate || '').trim() : ITD_START_DATE;
+  let endDate = dateMode === 'custom' ? String(form.endDate || '').trim() : ymd_(new Date());
+
+  if (!startDate) startDate = ITD_START_DATE;
+  if (!endDate) endDate = ymd_(new Date());
+  validateDate_(startDate, 'Start date');
+  validateDate_(endDate, 'End date');
+  if (startDate > endDate) throw new Error('Start date cannot be after end date.');
+  if (writeMode === 'replace' && !replaceConfirmed) throw new Error('Replace blocked. User permission required.');
+
+  const rows = getInvestmentTransactionRows_(startDate, endDate);
+  const sheet = getSpreadsheet_().getSheetByName(SHEETS.transactions);
+
+  if (writeMode === 'replace') {
+    replaceSheetData_(sheet, HEADERS.transactions, rows);
+    return { status: 'success', mode: 'replace', rowsPulled: rows.length, rowsAdded: rows.length, skippedDuplicates: 0, message: 'Transactions replaced for ' + startDate + ' to ' + endDate + '.' };
+  }
+
+  const result = appendTransactionRows_(sheet, rows);
+  return {
+    status: 'success',
+    mode: 'append',
+    rowsPulled: rows.length,
+    rowsAdded: result.added,
+    skippedDuplicates: result.duplicates,
+    message: 'Transactions appended for ' + startDate + ' to ' + endDate + '. Added ' + result.added + ', skipped duplicates ' + result.duplicates + '.'
+  };
+}
+
+function getInvestmentTransactionRows_(startDate, endDate) {
   const items = getStoredItems_();
-  if (!items.length) throw new Error('No linked brokerage items.');
+  if (!items.length) throw new Error('No linked brokerage items. Open Settings and connect first.');
 
-  const end = new Date();
-  const start = new Date();
-  start.setDate(start.getDate() - Number(daysBack || 365));
   const allRows = [];
-
   items.forEach(function(item) {
-    getTransactionRowsForItem_(item, ymd_(start), ymd_(end)).forEach(function(r) { allRows.push(r); });
+    getTransactionRowsForItem_(item, startDate, endDate).forEach(function(r) { allRows.push(r); });
   });
 
   allRows.sort(function(a, b) { return String(b[6]).localeCompare(String(a[6])); });
-  replaceSheetData_(getSpreadsheet_().getSheetByName(SHEETS.transactions), HEADERS.transactions, allRows);
-  return { status: 'success', rows: allRows.length, message: 'Transactions pulled successfully.' };
+  return allRows;
 }
 
 function getTransactionRowsForItem_(item, startDate, endDate) {
@@ -413,8 +447,50 @@ function getTransactionRowsForItem_(item, startDate, endDate) {
   return allTx.map(function(t) {
     const acct = accounts[t.account_id] || {};
     const sec = securities[t.security_id] || {};
-    return [item.institution_name || '', acct.name || '', sec.ticker_symbol || '', sec.name || '', t.type || '', t.subtype || '', t.date || '', t.name || '', t.quantity || '', t.price || '', t.amount || '', t.fees || '', t.investment_transaction_id || '', now_()];
+    return [item.institution_name || '', acct.name || '', sec.ticker_symbol || '', sec.name || '', t.type || '', t.subtype || '', t.date || '', t.name || '', t.quantity || '', t.price || '', t.amount || '', t.fees || '', t.investment_transaction_id || transactionFallbackKey_(item, t), now_()];
   });
+}
+
+function appendTransactionRows_(sheet, rows) {
+  createOrRepairSheet_(getSpreadsheet_(), SHEETS.transactions, HEADERS.transactions, 5000, 40);
+  const existing = getExistingTransactionKeys_(sheet);
+  const toAppend = [];
+  let duplicates = 0;
+
+  rows.forEach(function(row) {
+    const key = String(row[12] || '').trim();
+    if (key && existing[key]) {
+      duplicates += 1;
+      return;
+    }
+    if (key) existing[key] = true;
+    toAppend.push(row);
+  });
+
+  if (toAppend.length) {
+    const startRow = Math.max(sheet.getLastRow() + 1, 2);
+    ensureSize_(sheet, startRow + toAppend.length + 20, Math.max(HEADERS.transactions.length, sheet.getMaxColumns()));
+    sheet.getRange(startRow, 1, toAppend.length, HEADERS.transactions.length).setValues(toAppend);
+    sheet.autoResizeColumns(1, HEADERS.transactions.length);
+  }
+
+  return { added: toAppend.length, duplicates: duplicates };
+}
+
+function getExistingTransactionKeys_(sheet) {
+  const keys = {};
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return keys;
+  const values = sheet.getRange(2, 13, lastRow - 1, 1).getValues();
+  values.forEach(function(r) {
+    const key = String(r[0] || '').trim();
+    if (key) keys[key] = true;
+  });
+  return keys;
+}
+
+function transactionFallbackKey_(item, t) {
+  return [item.item_id || '', t.account_id || '', t.date || '', t.name || '', t.amount || '', t.quantity || '', t.price || ''].join('|');
 }
 
 function plaidPost_(path, payload) {
@@ -444,7 +520,7 @@ function plaidPost_(path, payload) {
 
 function getPlaidConfig_() {
   const cfg = getSafeConfig_();
-  if (!cfg.clientId || !cfg.secret) throw new Error('Service settings missing. Admin must configure the service first.');
+  if (!cfg.clientId || !cfg.secret) throw new Error('Service settings missing. For prototype, admin must configure Script Properties first.');
   return cfg;
 }
 
@@ -597,6 +673,16 @@ function getUserKey_() {
     props.setProperty(PROPS.safeClientUserId, userId);
   }
   return userId;
+}
+
+function validateDate_(value, label) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error(label + ' must be YYYY-MM-DD.');
+}
+
+function daysAgoYmd_(days) {
+  const d = new Date();
+  d.setDate(d.getDate() - Number(days || 0));
+  return ymd_(d);
 }
 
 function now_() {
