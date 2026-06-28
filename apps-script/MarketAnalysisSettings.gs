@@ -1,13 +1,15 @@
 /**
  * Portfolio Link Market Analysis settings helper.
- * This file does NOT rebuild the market report.
- * It only switches the Est. P&L method on the existing Report Market Analysis table.
+ * Provides three sidebar actions:
+ * 1) Save FIFO/Average method
+ * 2) Apply method to existing report only
+ * 3) Build full report, then apply saved method
  */
 
 var MARKET_TRIM_PNL_METHOD_PROP = 'MARKET_TRIM_PNL_METHOD';
 var MARKET_TRANSACTIONS_SHEET = 'Transactions';
 var MARKET_REPORT_SHEET = 'Report Market Analysis';
-var MARKET_TX_MAX_ROWS = 5000;
+var MARKET_TX_MAX_ROWS = 12000;
 
 function getMarketTrimPnlMethod() {
   return mrMarketNormalizeTrimPnlMethod_(PropertiesService.getDocumentProperties().getProperty(MARKET_TRIM_PNL_METHOD_PROP) || 'AVERAGE');
@@ -19,23 +21,28 @@ function setMarketTrimPnlMethod(method) {
   return value;
 }
 
-// Old sidebar compatibility. Important: this no longer builds the slow full market report.
+function saveMarketTrimPnlMethod(method) {
+  return 'Saved method: ' + mrMarketLabelForMethod_(setMarketTrimPnlMethod(method)) + '.';
+}
+
+// Backward-compatible old sidebar name. Keep it fast and apply-only.
 function buildMarketAnalysisReportFromSidebar(method) {
   return applyMarketTrimPnlMethodFastV3(method);
 }
 
-// New fast sidebar entrypoint. It only edits Est. P&L on the existing report.
 function applyMarketTrimPnlMethodFastV3(method) {
-  setMarketTrimPnlMethod(method);
-  var methodNow = getMarketTrimPnlMethod();
-  var result = mrMarketApplyTrimPnlMethodFast_(methodNow);
-  if (!result.tableFound) {
-    return 'No Raj Portfolio Impact table found with Est. P&L. Run the base Market Analysis report once first, then use FIFO/Average.';
-  }
-  if (!result.trimRows) {
-    return 'Method saved as ' + mrMarketTrimPnlMethodLabel_() + ', but there are no Trim-QTY rows to update.';
-  }
-  return 'Done. Method: ' + mrMarketTrimPnlMethodLabel_() + '. Trim rows updated: ' + result.updated + '. This did not rebuild the full market report.';
+  var saved = setMarketTrimPnlMethod(method);
+  var result = mrMarketApplyTrimPnlMethodFast_(saved);
+  if (!result.tableFound) return 'No Raj Portfolio Impact table found with Est. P&L. Use Build Full Report once first, then apply FIFO/Average.';
+  if (!result.trimRows) return 'Method saved as ' + mrMarketLabelForMethod_(saved) + ', but there are no Trim-QTY rows to update.';
+  return 'Done. Method: ' + mrMarketLabelForMethod_(saved) + '. Trim rows updated: ' + result.updated + '. This did not rebuild market data.';
+}
+
+function buildFullMarketAnalysisWithSavedMethod(method) {
+  var saved = setMarketTrimPnlMethod(method);
+  var msg = buildMarketAnalysisReport();
+  var result = mrMarketApplyTrimPnlMethodFast_(saved);
+  return msg + ' Method: ' + mrMarketLabelForMethod_(saved) + '. Trim rows updated: ' + result.updated + '.';
 }
 
 function mrMarketNormalizeTrimPnlMethod_(method) {
@@ -43,8 +50,8 @@ function mrMarketNormalizeTrimPnlMethod_(method) {
   return v === 'FIFO' ? 'FIFO' : 'AVERAGE';
 }
 
-function mrMarketTrimPnlMethodLabel_() {
-  return getMarketTrimPnlMethod() === 'FIFO' ? 'FIFO using Transactions tax lots when available' : 'Evenly spread average-cost estimate';
+function mrMarketLabelForMethod_(method) {
+  return mrMarketNormalizeTrimPnlMethod_(method) === 'FIFO' ? 'FIFO using Transactions tax lots' : 'Evenly spread average-cost estimate';
 }
 
 function mrMarketApplyTrimPnlMethodFast_(method) {
@@ -52,14 +59,14 @@ function mrMarketApplyTrimPnlMethodFast_(method) {
   var sh = ss.getSheetByName(MARKET_REPORT_SHEET);
   if (!sh) return {tableFound:false, trimRows:0, updated:0};
 
-  var lastRow = Math.min(sh.getLastRow(), 300);
+  var lastRow = Math.min(sh.getLastRow(), 400);
   var lastCol = Math.min(sh.getLastColumn(), 13);
   if (lastRow < 2 || lastCol < 2) return {tableFound:false, trimRows:0, updated:0};
 
   var display = sh.getRange(1, 1, lastRow, lastCol).getDisplayValues();
   var headerRow = -1;
   for (var r = 0; r < display.length; r++) {
-    if (display[r].indexOf('Ticker') >= 0 && display[r].indexOf('Exact Action') >= 0) {
+    if (display[r].indexOf('Ticker') >= 0 && display[r].indexOf('Exact Action') >= 0 && display[r].indexOf('Est. P&L') >= 0) {
       headerRow = r + 1;
       break;
     }
@@ -107,17 +114,12 @@ function mrMarketApplyTrimPnlMethodFast_(method) {
   var lotsByTicker = {};
   if (method === 'FIFO') lotsByTicker = mrMarketBuildOpenLotsByTickerFast_(neededTickers);
 
-  var estPnlValues = [];
-  var reasonValues = [];
   jobs.forEach(function(job) {
     var result = {pnl: job.avgPnl, note: 'Average method: estimated by spreading current unrealized P&L evenly across held shares.'};
     if (method === 'FIFO') result = mrMarketEstimateFifoTrimPnl_(job.ticker, job.trimQty, job.sellPrice, job.avgPnl, lotsByTicker[job.ticker] || []);
-    estPnlValues.push({row: job.row, value: mrMarketMoney_(result.pnl)});
-    if (reasonCol) reasonValues.push({row: job.row, value: mrMarketStripMethodNotes_(job.reason) + ' ' + result.note});
+    sh.getRange(job.row, estPnlCol).setValue(mrMarketMoney_(result.pnl));
+    if (reasonCol) sh.getRange(job.row, reasonCol).setValue(mrMarketStripMethodNotes_(job.reason) + ' ' + result.note);
   });
-
-  estPnlValues.forEach(function(x) { sh.getRange(x.row, estPnlCol).setValue(x.value); });
-  if (reasonCol) reasonValues.forEach(function(x) { sh.getRange(x.row, reasonCol).setValue(x.value); });
 
   return {tableFound:true, trimRows:jobs.length, updated:jobs.length};
 }
@@ -174,11 +176,9 @@ function mrMarketReadTransactionsForTickersFast_(neededTickers) {
     date: col(['date','transaction_date','posted_date']),
     account: col(['account_name','account','account_id'])
   };
-
   if (!cols.ticker || !cols.qty) return [];
 
-  var width = lastCol;
-  var values = sh.getRange(2, 1, lastRow - 1, width).getDisplayValues();
+  var values = sh.getRange(2, 1, lastRow - 1, lastCol).getDisplayValues();
   var out = [];
 
   values.forEach(function(row, n) {
@@ -189,19 +189,25 @@ function mrMarketReadTransactionsForTickersFast_(neededTickers) {
     var type = cols.type ? String(row[cols.type - 1] || '').toLowerCase() : '';
     var subtype = cols.subtype ? String(row[cols.subtype - 1] || '').toLowerCase() : '';
     var name = cols.name ? String(row[cols.name - 1] || '').toLowerCase() : '';
-    var qty = mrMarketNum_(row[cols.qty - 1]);
-    var qtyAbs = Math.abs(qty);
+    var text = type + ' ' + subtype + ' ' + name;
+    var qtyRaw = mrMarketNum_(row[cols.qty - 1]);
+    var qtyAbs = Math.abs(qtyRaw);
     if (!qtyAbs) return;
+
+    var hasBuyText = /\bbuy\b|\bbought\b|\bbot\b|\bpurchase\b|\breinvest/.test(text);
+    var hasSellText = /\bsell\b|\bsold\b|\bsld\b/.test(text);
+    var isBuy = hasBuyText && !hasSellText;
+    var isSell = hasSellText && !hasBuyText;
+    if (!isBuy && !isSell) {
+      isBuy = qtyRaw > 0;
+      isSell = qtyRaw < 0;
+    }
+    if (!isBuy && !isSell) return;
 
     var price = cols.price ? mrMarketNum_(row[cols.price - 1]) : 0;
     var amount = cols.amount ? mrMarketNum_(row[cols.amount - 1]) : 0;
     var fees = cols.fees ? Math.abs(mrMarketNum_(row[cols.fees - 1])) : 0;
     var date = cols.date ? mrMarketDate_(row[cols.date - 1]) : new Date(0);
-    var text = type + ' ' + subtype + ' ' + name;
-    var looksBuy = /\bbuy\b|\bbought\b|\bbot\b/.test(text) || qty > 0;
-    var looksSell = /\bsell\b|\bsold\b/.test(text) || qty < 0;
-    var isBuy = looksBuy && qtyAbs > 0;
-    var isSell = looksSell && qtyAbs > 0 && !isBuy;
     var costPerShare = isBuy ? (price > 0 ? price + (fees / qtyAbs) : (Math.abs(amount) / qtyAbs)) : 0;
 
     out.push({date: date, seq: n, ticker: ticker, qtyAbs: qtyAbs, isBuy: isBuy, isSell: isSell, costPerShare: costPerShare});
@@ -220,9 +226,7 @@ function mrMarketEstimateFifoTrimPnl_(ticker, trimQty, sellPrice, fallbackPnl, l
     matched += take;
     q -= take;
   }
-  if (matched >= trimQty - 0.00001 && trimQty > 0) {
-    return {pnl: pnl, note: 'FIFO method: Est. P&L uses oldest remaining priced buy lots from the Transactions tab first.'};
-  }
+  if (matched >= trimQty - 0.00001 && trimQty > 0) return {pnl: pnl, note: 'FIFO method: Est. P&L uses oldest remaining priced buy lots from the Transactions tab first.'};
   return {pnl: fallbackPnl, note: 'FIFO selected, but only ' + mrMarketQty_(matched) + ' of ' + mrMarketQty_(trimQty) + ' shares had priced FIFO lots in Transactions; used aggregate average estimate for this row.'};
 }
 
@@ -230,12 +234,7 @@ function mrMarketIncludeAccount_(accountName) {
   var s = String(accountName || '').toLowerCase();
   return !(s.indexOf('baljinder') >= 0 || s.indexOf('parminder') >= 0 || s.indexOf('b + g') >= 0);
 }
-
-function mrMarketActionQty_(action) {
-  var m = String(action || '').match(/Trim-QTY\s+([0-9.]+)/i);
-  return m ? Number(m[1]) : 0;
-}
-
+function mrMarketActionQty_(action) { var m = String(action || '').match(/Trim-QTY\s+([0-9.]+)/i); return m ? Number(m[1]) : 0; }
 function mrMarketStripMethodNotes_(reason) {
   return String(reason || '')
     .replace(/\s*FIFO method: Est\. P&L uses oldest remaining priced buy lots from the Transactions tab first\./g, '')
@@ -243,7 +242,6 @@ function mrMarketStripMethodNotes_(reason) {
     .replace(/\s*Average method: estimated by spreading current unrealized P&L evenly across held shares\./g, '')
     .trim();
 }
-
 function mrMarketNorm_(x) { return String(x || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''); }
 function mrMarketDate_(x) { var d = new Date(x); return isNaN(d.getTime()) ? new Date(0) : d; }
 function mrMarketNum_(x) {
