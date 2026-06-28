@@ -33,16 +33,36 @@ function buildMarketAnalysisReportFromSidebar(method) {
 function applyMarketTrimPnlMethodFastV3(method) {
   var saved = setMarketTrimPnlMethod(method);
   var result = mrMarketApplyTrimPnlMethodFast_(saved);
-  if (!result.tableFound) return 'No Raj Portfolio Impact table found with Est. P&L. Use Build Full Report once first, then apply FIFO/Average.';
-  if (!result.trimRows) return 'Method saved as ' + mrMarketLabelForMethod_(saved) + ', but there are no Trim-QTY rows to update.';
-  return 'Done. Method: ' + mrMarketLabelForMethod_(saved) + '. Trim rows updated: ' + result.updated + '. This did not rebuild market data.';
+  if (!result.tableFound) return mrMarketResponse_('No Raj Portfolio Impact table found with Est. P&L. Use Build Full Report once first, then apply FIFO/Average.', result);
+  if (!result.trimRows) return mrMarketResponse_('Method saved as ' + mrMarketLabelForMethod_(saved) + ', but there are no Trim-QTY rows to update.', result);
+  return mrMarketResponse_('Done. Method: ' + mrMarketLabelForMethod_(saved) + '. Trim rows updated: ' + result.updated + '. This did not rebuild market data.', result);
 }
 
 function buildFullMarketAnalysisWithSavedMethod(method) {
   var saved = setMarketTrimPnlMethod(method);
   var msg = buildMarketAnalysisReport();
   var result = mrMarketApplyTrimPnlMethodFast_(saved);
-  return msg + ' Method: ' + mrMarketLabelForMethod_(saved) + '. Trim rows updated: ' + result.updated + '.';
+  return mrMarketResponse_(msg + ' Method: ' + mrMarketLabelForMethod_(saved) + '. Trim rows updated: ' + result.updated + '.', result);
+}
+
+function mrMarketResponse_(message, result) {
+  result = result || {};
+  var details = result.fallbackDetails || [];
+  return {
+    message: message,
+    fallbackCount: details.length,
+    fallbackTickers: details.map(function(x) { return x.ticker; }).join(', '),
+    fallbackDetails: details,
+    logText: details.length ? mrMarketFallbackLogText_(details) : ''
+  };
+}
+
+function mrMarketFallbackLogText_(details) {
+  var lines = ['FIFO fallback explanation:'];
+  details.forEach(function(d) {
+    lines.push('- ' + d.ticker + ': used average estimate because ' + d.reason + ' Matched ' + mrMarketQty_(d.matchedQty) + ' of ' + mrMarketQty_(d.neededQty) + ' trim shares from priced FIFO lots.');
+  });
+  return lines.join('\n');
 }
 
 function mrMarketNormalizeTrimPnlMethod_(method) {
@@ -57,11 +77,11 @@ function mrMarketLabelForMethod_(method) {
 function mrMarketApplyTrimPnlMethodFast_(method) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(MARKET_REPORT_SHEET);
-  if (!sh) return {tableFound:false, trimRows:0, updated:0};
+  if (!sh) return {tableFound:false, trimRows:0, updated:0, fallbackDetails:[]};
 
   var lastRow = Math.min(sh.getLastRow(), 400);
   var lastCol = Math.min(sh.getLastColumn(), 13);
-  if (lastRow < 2 || lastCol < 2) return {tableFound:false, trimRows:0, updated:0};
+  if (lastRow < 2 || lastCol < 2) return {tableFound:false, trimRows:0, updated:0, fallbackDetails:[]};
 
   var display = sh.getRange(1, 1, lastRow, lastCol).getDisplayValues();
   var headerRow = -1;
@@ -71,7 +91,7 @@ function mrMarketApplyTrimPnlMethodFast_(method) {
       break;
     }
   }
-  if (headerRow < 1) return {tableFound:false, trimRows:0, updated:0};
+  if (headerRow < 1) return {tableFound:false, trimRows:0, updated:0, fallbackDetails:[]};
 
   var headers = display[headerRow - 1];
   var idx = {};
@@ -83,7 +103,7 @@ function mrMarketApplyTrimPnlMethodFast_(method) {
   var estPnlCol = idx['Est. P&L'];
   var estValueCol = idx['Est. $ Value'];
   var reasonCol = idx['Reason / Price Source'];
-  if (!actionCol || !qtyCol || !totalPnlCol || !estPnlCol || !estValueCol) return {tableFound:false, trimRows:0, updated:0};
+  if (!actionCol || !qtyCol || !totalPnlCol || !estPnlCol || !estValueCol) return {tableFound:false, trimRows:0, updated:0, fallbackDetails:[]};
 
   var jobs = [];
   var neededTickers = {};
@@ -109,19 +129,28 @@ function mrMarketApplyTrimPnlMethodFast_(method) {
     neededTickers[ticker] = true;
   }
 
-  if (!jobs.length) return {tableFound:true, trimRows:0, updated:0};
+  if (!jobs.length) return {tableFound:true, trimRows:0, updated:0, fallbackDetails:[]};
 
   var lotsByTicker = {};
   if (method === 'FIFO') lotsByTicker = mrMarketBuildOpenLotsByTickerFast_(neededTickers);
 
+  var fallbackDetails = [];
   jobs.forEach(function(job) {
-    var result = {pnl: job.avgPnl, note: 'Average method: estimated by spreading current unrealized P&L evenly across held shares.'};
+    var result = {pnl: job.avgPnl, note: 'Average method: estimated by spreading current unrealized P&L evenly across held shares.', fallback:false};
     if (method === 'FIFO') result = mrMarketEstimateFifoTrimPnl_(job.ticker, job.trimQty, job.sellPrice, job.avgPnl, lotsByTicker[job.ticker] || []);
     sh.getRange(job.row, estPnlCol).setValue(mrMarketMoney_(result.pnl));
     if (reasonCol) sh.getRange(job.row, reasonCol).setValue(mrMarketStripMethodNotes_(job.reason) + ' ' + result.note);
+    if (result.fallback) {
+      fallbackDetails.push({
+        ticker: job.ticker,
+        neededQty: job.trimQty,
+        matchedQty: result.matchedQty || 0,
+        reason: result.reason || 'there were not enough priced FIFO buy lots in Transactions.'
+      });
+    }
   });
 
-  return {tableFound:true, trimRows:jobs.length, updated:jobs.length};
+  return {tableFound:true, trimRows:jobs.length, updated:jobs.length, fallbackDetails:fallbackDetails};
 }
 
 function mrMarketBuildOpenLotsByTickerFast_(neededTickers) {
@@ -226,8 +255,17 @@ function mrMarketEstimateFifoTrimPnl_(ticker, trimQty, sellPrice, fallbackPnl, l
     matched += take;
     q -= take;
   }
-  if (matched >= trimQty - 0.00001 && trimQty > 0) return {pnl: pnl, note: 'FIFO method: Est. P&L uses oldest remaining priced buy lots from the Transactions tab first.'};
-  return {pnl: fallbackPnl, note: 'FIFO selected, but only ' + mrMarketQty_(matched) + ' of ' + mrMarketQty_(trimQty) + ' shares had priced FIFO lots in Transactions; used aggregate average estimate for this row.'};
+  if (matched >= trimQty - 0.00001 && trimQty > 0) {
+    return {pnl: pnl, note: 'FIFO method: Est. P&L uses oldest remaining priced buy lots from the Transactions tab first.', fallback:false};
+  }
+  var reason = matched <= 0 ? 'no priced FIFO buy lots were found for this ticker in the Transactions tab.' : 'not enough priced FIFO buy lots were found for the requested trim quantity.';
+  return {
+    pnl: fallbackPnl,
+    note: 'FIFO fallback: used average estimate because ' + reason + ' Matched ' + mrMarketQty_(matched) + ' of ' + mrMarketQty_(trimQty) + ' shares.',
+    fallback:true,
+    matchedQty: matched,
+    reason: reason
+  };
 }
 
 function mrMarketIncludeAccount_(accountName) {
@@ -238,6 +276,7 @@ function mrMarketActionQty_(action) { var m = String(action || '').match(/Trim-Q
 function mrMarketStripMethodNotes_(reason) {
   return String(reason || '')
     .replace(/\s*FIFO method: Est\. P&L uses oldest remaining priced buy lots from the Transactions tab first\./g, '')
+    .replace(/\s*FIFO fallback: used average estimate because [\s\S]*? shares\./g, '')
     .replace(/\s*FIFO selected, but only [\s\S]*?used aggregate average estimate for this row\./g, '')
     .replace(/\s*Average method: estimated by spreading current unrealized P&L evenly across held shares\./g, '')
     .trim();
