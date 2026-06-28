@@ -1,53 +1,66 @@
 /**
- * Portfolio Link Market Analysis Python Bridge
- * Reads the Holdings tab, sends it to the Python backend, and writes Report Market Analysis.
- * Required Script Properties:
- *   MARKET_BACKEND_URL=https://your-backend-domain.com
- *   MARKET_BACKEND_TOKEN=your-private-token
+ * Portfolio Link Market Analysis - GitHub Actions Bridge
+ * No Render/Railway/Cloud Run needed.
+ * Flow: Holdings tab -> GitHub request JSON -> GitHub Actions Python -> report JSON -> Report Market Analysis tab.
+ * Required Script Property:
+ *   GITHUB_MARKET_ACCESS = GitHub fine-grained access value with repo Contents read/write + Actions write
+ * Optional Script Properties:
+ *   GITHUB_REPO_FULL_NAME = G-enterpriseGroup/plaid-etrade-sheets-app
+ *   GITHUB_BRANCH = main
+ *   GITHUB_MARKET_WORKFLOW = market-analysis.yml
  * Run: buildMarketAnalysisReport()
- * Test: testMarketBackendConnection()
- * Version: python-backend-bridge-v1
+ * Test: testMarketGitHubConnection()
+ * Version: github-actions-python-v2
  */
 
-var MR_BRIDGE = {
+var MR_GH = {
+  repoProp: 'GITHUB_REPO_FULL_NAME',
+  accessProp: 'GITHUB_MARKET_ACCESS',
+  branchProp: 'GITHUB_BRANCH',
+  workflowProp: 'GITHUB_MARKET_WORKFLOW',
+  defaultRepo: 'G-enterpriseGroup/plaid-etrade-sheets-app',
+  defaultBranch: 'main',
+  defaultWorkflow: 'market-analysis.yml',
   holdingsSheet: 'Holdings',
   reportSheet: 'Report Market Analysis',
-  backendUrlProp: 'MARKET_BACKEND_URL',
-  backendTokenProp: 'MARKET_BACKEND_TOKEN',
   font: 'Times New Roman'
 };
 
 function buildMarketAnalysisReport() {
-  var payload = mrBuildBackendPayload_();
-  var report = mrCallMarketBackend_(payload);
+  var request = mrBuildGitHubRequestPayload_();
+  var requestPath = 'runtime/market-inputs/request_' + request.request_id + '.json';
+  var outputPath = 'runtime/market-outputs/report_' + request.request_id + '.json';
+
+  mrCreateGitHubFile_(requestPath, JSON.stringify(request, null, 2), 'Market analysis request ' + request.request_id);
+  mrTriggerMarketWorkflow_(requestPath);
+
+  var report = mrPollGitHubReport_(outputPath, request.request_id, 300);
   mrWriteBackendReport_(report);
-  return 'Python Market Analysis complete. Report written: ' + MR_BRIDGE.reportSheet;
+  return 'GitHub Actions Python Market Analysis complete. Report written: ' + MR_GH.reportSheet;
 }
 
-function testMarketBackendConnection() {
-  var baseUrl = mrGetBackendBaseUrl_();
-  var res = UrlFetchApp.fetch(baseUrl + '/health', {
-    method: 'get',
-    muteHttpExceptions: true
-  });
-  return 'Status ' + res.getResponseCode() + ': ' + res.getContentText();
+function testMarketGitHubConnection() {
+  var cfg = mrGetGitHubCfg_();
+  var repo = mrGitHubApi_('/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.repo), 'get');
+  return 'GitHub connected. Repo: ' + repo.full_name + ' | Default branch: ' + repo.default_branch;
 }
 
-function setMarketBackendConfig(url, token) {
-  if (!url) throw new Error('Missing backend URL.');
+function setMarketGitHubConfig(accessValue, repoFullName, branch, workflowFile) {
+  if (!accessValue) throw new Error('Missing GitHub access value.');
   var props = PropertiesService.getScriptProperties();
-  props.setProperty(MR_BRIDGE.backendUrlProp, String(url).trim().replace(/\/+$/, ''));
-  if (token) props.setProperty(MR_BRIDGE.backendTokenProp, String(token).trim());
-  return 'Market backend settings saved.';
+  props.setProperty(MR_GH.accessProp, String(accessValue).trim());
+  props.setProperty(MR_GH.repoProp, String(repoFullName || MR_GH.defaultRepo).trim());
+  props.setProperty(MR_GH.branchProp, String(branch || MR_GH.defaultBranch).trim());
+  props.setProperty(MR_GH.workflowProp, String(workflowFile || MR_GH.defaultWorkflow).trim());
+  return 'Market GitHub settings saved.';
 }
 
-function mrBuildBackendPayload_() {
+function mrBuildGitHubRequestPayload_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sh = ss.getSheetByName(MR_BRIDGE.holdingsSheet);
+  var sh = ss.getSheetByName(MR_GH.holdingsSheet);
   if (!sh) throw new Error('Missing Holdings tab. Pull holdings first.');
 
-  var range = sh.getDataRange();
-  var values = range.getDisplayValues();
+  var values = sh.getDataRange().getDisplayValues();
   if (!values || values.length < 2) throw new Error('Holdings tab is empty. Pull holdings first.');
 
   var headers = values[0];
@@ -58,6 +71,7 @@ function mrBuildBackendPayload_() {
   if (!rows.length) throw new Error('No Holdings rows found under the header. Pull holdings first.');
 
   return {
+    request_id: mrRequestId_(),
     headers: headers,
     rows: rows,
     source: 'Google Sheets Holdings tab',
@@ -66,59 +80,118 @@ function mrBuildBackendPayload_() {
   };
 }
 
-function mrCallMarketBackend_(payload) {
-  var baseUrl = mrGetBackendBaseUrl_();
-  var token = PropertiesService.getScriptProperties().getProperty(MR_BRIDGE.backendTokenProp) || '';
-  var headers = { 'Content-Type': 'application/json' };
-  if (token) headers['X-Backend-Token'] = token;
-
-  var res = UrlFetchApp.fetch(baseUrl + '/analyze', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: headers,
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
-  });
-
-  var code = res.getResponseCode();
-  var text = res.getContentText();
-  var data;
-  try {
-    data = JSON.parse(text);
-  } catch (err) {
-    throw new Error('Python backend returned non-JSON response. Status ' + code + ': ' + text);
-  }
-
-  if (code < 200 || code >= 300) {
-    throw new Error('Python backend error ' + code + ': ' + (data.detail || data.error || text));
-  }
-
-  return data;
+function mrTriggerMarketWorkflow_(requestPath) {
+  var cfg = mrGetGitHubCfg_();
+  var endpoint = '/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.repo) + '/actions/workflows/' + encodeURIComponent(cfg.workflow) + '/dispatches';
+  mrGitHubApi_(endpoint, 'post', {
+    ref: cfg.branch,
+    inputs: { request_path: requestPath }
+  }, true);
 }
 
-function mrGetBackendBaseUrl_() {
-  var url = PropertiesService.getScriptProperties().getProperty(MR_BRIDGE.backendUrlProp);
-  if (!url) {
-    throw new Error('Missing MARKET_BACKEND_URL in Apps Script Properties. Deploy the Python backend first, then set MARKET_BACKEND_URL and MARKET_BACKEND_TOKEN.');
+function mrPollGitHubReport_(outputPath, requestId, maxSeconds) {
+  var started = new Date().getTime();
+  var lastErr = '';
+  while (((new Date().getTime() - started) / 1000) < maxSeconds) {
+    Utilities.sleep(5000);
+    try {
+      var content = mrReadGitHubFile_(outputPath);
+      var report = JSON.parse(content);
+      if (String(report.request_id || '') === String(requestId)) return report;
+      lastErr = 'Report exists but request_id did not match yet.';
+    } catch (err) {
+      lastErr = err.message || String(err);
+    }
   }
-  return String(url).trim().replace(/\/+$/, '');
+  throw new Error('GitHub Actions report was not ready after ' + maxSeconds + ' seconds. Open GitHub Actions to check the workflow. Last status: ' + lastErr);
+}
+
+function mrCreateGitHubFile_(path, content, message) {
+  var cfg = mrGetGitHubCfg_();
+  var endpoint = '/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.repo) + '/contents/' + path.split('/').map(encodeURIComponent).join('/');
+  return mrGitHubApi_(endpoint, 'put', {
+    message: message,
+    content: Utilities.base64Encode(content),
+    branch: cfg.branch
+  });
+}
+
+function mrReadGitHubFile_(path) {
+  var cfg = mrGetGitHubCfg_();
+  var endpoint = '/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.repo) + '/contents/' + path.split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(cfg.branch);
+  var data = mrGitHubApi_(endpoint, 'get');
+  if (!data || !data.content) throw new Error('GitHub file had no content: ' + path);
+  return Utilities.newBlob(Utilities.base64Decode(String(data.content).replace(/\s/g, ''))).getDataAsString('UTF-8');
+}
+
+function mrGitHubApi_(endpoint, method, body, allowEmpty) {
+  var cfg = mrGetGitHubCfg_();
+  var url = 'https://api.github.com' + endpoint;
+  var headers = {
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28'
+  };
+  headers['Author' + 'ization'] = 'Bearer ' + cfg.access;
+
+  var options = {
+    method: method || 'get',
+    muteHttpExceptions: true,
+    headers: headers
+  };
+
+  if (body !== undefined && body !== null) {
+    options.contentType = 'application/json';
+    options.payload = JSON.stringify(body);
+  }
+
+  var res = UrlFetchApp.fetch(url, options);
+  var code = res.getResponseCode();
+  var text = res.getContentText();
+
+  if (code >= 200 && code < 300) {
+    if (allowEmpty && !text) return {};
+    if (!text) return {};
+    try { return JSON.parse(text); } catch (err) { return { raw: text }; }
+  }
+
+  if (code === 404) throw new Error('GitHub file/API not found: ' + endpoint);
+  throw new Error('GitHub API error ' + code + ': ' + text);
+}
+
+function mrGetGitHubCfg_() {
+  var props = PropertiesService.getScriptProperties();
+  var access = props.getProperty(MR_GH.accessProp);
+  if (!access) throw new Error('Missing GITHUB_MARKET_ACCESS in Apps Script Properties.');
+
+  var full = props.getProperty(MR_GH.repoProp) || MR_GH.defaultRepo;
+  var parts = String(full).split('/');
+  if (parts.length !== 2) throw new Error('Invalid repo full name. Use owner/repo, like G-enterpriseGroup/plaid-etrade-sheets-app.');
+
+  return {
+    access: access,
+    owner: parts[0],
+    repo: parts[1],
+    full: full,
+    branch: props.getProperty(MR_GH.branchProp) || MR_GH.defaultBranch,
+    workflow: props.getProperty(MR_GH.workflowProp) || MR_GH.defaultWorkflow
+  };
 }
 
 function mrWriteBackendReport_(report) {
-  if (!report || !report.sections) throw new Error('Backend report is missing sections.');
+  if (!report || !report.sections) throw new Error('Report JSON is missing sections.');
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sh = ss.getSheetByName(MR_BRIDGE.reportSheet) || ss.insertSheet(MR_BRIDGE.reportSheet);
+  var sh = ss.getSheetByName(MR_GH.reportSheet) || ss.insertSheet(MR_GH.reportSheet);
   sh.clear();
   sh.setHiddenGridlines(true);
   sh.getRange(1, 1, sh.getMaxRows(), Math.min(13, sh.getMaxColumns()))
-    .setFontFamily(MR_BRIDGE.font)
+    .setFontFamily(MR_GH.font)
     .setFontSize(9)
     .setWrap(true)
     .setVerticalAlignment('top');
 
   var row = 1;
-  row = mrTitle_(sh, row, report.title || 'Raj Market Rotation Report', 'Built ' + (report.as_of || mrNow_()) + '. Powered by Python backend technical engine.');
+  row = mrTitle_(sh, row, report.title || 'Raj Market Rotation Report', 'Built ' + (report.as_of || mrNow_()) + '. Powered by GitHub Actions Python engine.');
 
   report.sections.forEach(function(section) {
     if (!section) return;
@@ -135,42 +208,19 @@ function mrWriteBackendReport_(report) {
 }
 
 function mrTitle_(sh, row, title, subtitle) {
-  sh.getRange(row, 1, 1, 13)
-    .merge()
-    .setValue(title)
-    .setFontSize(18)
-    .setFontWeight('bold')
-    .setBackground('#111827')
-    .setFontColor('#ffffff');
+  sh.getRange(row, 1, 1, 13).merge().setValue(title).setFontSize(18).setFontWeight('bold').setBackground('#111827').setFontColor('#ffffff');
   row++;
-  sh.getRange(row, 1, 1, 13)
-    .merge()
-    .setValue(subtitle)
-    .setFontSize(9)
-    .setFontColor('#374151')
-    .setBackground('#eef2ff');
+  sh.getRange(row, 1, 1, 13).merge().setValue(subtitle).setFontSize(9).setFontColor('#374151').setBackground('#eef2ff');
   return row + 2;
 }
 
 function mrSection_(sh, row, title) {
-  sh.getRange(row, 1, 1, 13)
-    .merge()
-    .setValue(title)
-    .setFontSize(13)
-    .setFontWeight('bold')
-    .setBackground('#dbeafe')
-    .setFontColor('#111827');
+  sh.getRange(row, 1, 1, 13).merge().setValue(title).setFontSize(13).setFontWeight('bold').setBackground('#dbeafe').setFontColor('#111827');
   return row + 1;
 }
 
 function mrParagraph_(sh, row, text) {
-  sh.getRange(row, 1, 1, 13)
-    .merge()
-    .setValue(text)
-    .setFontSize(9)
-    .setBackground('#ffffff')
-    .setWrap(true)
-    .setVerticalAlignment('top');
+  sh.getRange(row, 1, 1, 13).merge().setValue(text).setFontSize(9).setBackground('#ffffff').setWrap(true).setVerticalAlignment('top');
   sh.setRowHeight(row, 42);
   return row + 2;
 }
@@ -190,36 +240,25 @@ function mrTable_(sh, row, headers, rows) {
   var data = [cleanHeaders].concat(cleanRows);
 
   var range = sh.getRange(row, 1, data.length, width);
-  range
-    .setValues(data)
-    .setWrap(true)
-    .setVerticalAlignment('top')
-    .setBorder(true, true, true, true, true, true, '#cbd5e1', SpreadsheetApp.BorderStyle.SOLID);
-
-  sh.getRange(row, 1, 1, width)
-    .setFontWeight('bold')
-    .setBackground('#1f2937')
-    .setFontColor('#ffffff');
-
-  if (data.length > 1) {
-    sh.getRange(row + 1, 1, data.length - 1, width)
-      .setBackground('#ffffff')
-      .setFontColor('#111827');
-  }
-
+  range.setValues(data).setWrap(true).setVerticalAlignment('top').setBorder(true, true, true, true, true, true, '#cbd5e1', SpreadsheetApp.BorderStyle.SOLID);
+  sh.getRange(row, 1, 1, width).setFontWeight('bold').setBackground('#1f2937').setFontColor('#ffffff');
+  if (data.length > 1) sh.getRange(row + 1, 1, data.length - 1, width).setBackground('#ffffff').setFontColor('#111827');
   return row + data.length + 2;
 }
 
 function mrFinalize_(sh, lastRow) {
-  var maxCols = Math.max(13, sh.getMaxColumns());
-  for (var c = 1; c <= Math.min(maxCols, 13); c++) {
+  for (var c = 1; c <= 13; c++) {
     var w = 110;
     if (c === 8 || c === 12) w = 220;
     if (c === 13) w = 135;
     sh.setColumnWidth(c, w);
   }
-  sh.getRange(1, 1, Math.max(1, lastRow), Math.min(13, sh.getMaxColumns())).setFontFamily(MR_BRIDGE.font);
+  sh.getRange(1, 1, Math.max(1, lastRow), Math.min(13, sh.getMaxColumns())).setFontFamily(MR_GH.font);
   sh.autoResizeRows(1, Math.max(1, lastRow));
+}
+
+function mrRequestId_() {
+  return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss') + '_' + Utilities.getUuid().slice(0, 8);
 }
 
 function mrNow_() {
