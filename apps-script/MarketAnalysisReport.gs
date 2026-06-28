@@ -26,7 +26,7 @@ function startMarketAnalysisReport() {
   props.setProperty(MR_GH.lastRequestIdProp, request.request_id);
   props.setProperty(MR_GH.lastRequestPathProp, requestPath);
   props.setProperty(MR_GH.lastOutputPathProp, outputPath);
-  return 'Market Analysis started in GitHub Actions. Wait 2-5 minutes, then run fetchMarketAnalysisReport. Request: ' + request.request_id;
+  return 'Market Analysis started. Request: ' + request.request_id;
 }
 
 function fetchMarketAnalysisReport() {
@@ -38,6 +38,18 @@ function fetchMarketAnalysisReport() {
   if (String(report.request_id || '') !== String(requestId)) throw new Error('Finished report found, but request_id does not match. Expected ' + requestId + ', got ' + report.request_id);
   mrWriteBackendReport_(report);
   return 'Finished report imported into ' + MR_GH.reportSheet + '. Request: ' + requestId;
+}
+
+function tryFetchMarketAnalysisReport() {
+  try {
+    return { ready: true, message: fetchMarketAnalysisReport() };
+  } catch (err) {
+    var msg = err && err.message ? err.message : String(err);
+    if (msg.indexOf('GitHub file/API not found') >= 0 || msg.indexOf('Not Found') >= 0 || msg.indexOf('404') >= 0) {
+      return { ready: false, message: 'Report not ready yet. GitHub Actions may still be running.' };
+    }
+    throw err;
+  }
 }
 
 function fetchLatestMarketAnalysisReport() {
