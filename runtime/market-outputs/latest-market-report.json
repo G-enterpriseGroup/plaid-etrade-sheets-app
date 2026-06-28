@@ -1,0 +1,685 @@
+{
+  "title": "Raj Market Rotation Report",
+  "as_of": "2026-06-28 01:23:53 UTC",
+  "sections": [
+    {
+      "type": "paragraph",
+      "title": "",
+      "text": "Uses connected E*TRADE holdings excluding cash and money market. Technical engine uses daily market data, EMA/SMA/MACD/RS, and portfolio tolerance controls."
+    },
+    {
+      "type": "table",
+      "title": "Macro Risk Dashboard",
+      "headers": [
+        "Risk Area",
+        "Current Read",
+        "Risk Level",
+        "Portfolio Meaning"
+      ],
+      "rows": [
+        [
+          "War / Geopolitics",
+          "GLD 20d 0.00%; USO 20d 0.00%",
+          "Normal watch",
+          "Gold/defense matter more if risk shock rises."
+        ],
+        [
+          "Oil / Energy shock",
+          "USO 20d 0.00%",
+          "Neutral",
+          "Affects XLE, inflation expectations, and consumer pressure."
+        ],
+        [
+          "Crisis / Liquidity",
+          "SPY n/a 50 SMA; HYG 20d 0.00%",
+          "Risk-on acceptable",
+          "Controls how aggressive adds should be."
+        ],
+        [
+          "Fed / Yields",
+          "TLT 20d 0.00%",
+          "Neutral",
+          "Affects growth stocks, banks, real estate, and bond sleeves."
+        ],
+        [
+          "Inflation / Dollar",
+          "UUP 20d 0.00%; USO 20d 0.00%",
+          "Contained",
+          "Affects ADRs, gold, and valuation multiples."
+        ],
+        [
+          "Jobs / Growth",
+          "SPY technical read: Needs data",
+          "Growth trend mixed/weak",
+          "Confirms whether rotation supports risk assets."
+        ]
+      ]
+    },
+    {
+      "type": "paragraph",
+      "title": "Macro Summary",
+      "text": "Macro reads use market proxies for oil, yields/bonds, dollar, gold, high-yield credit, and SPY trend. Headlines, Fed calendar, CPI/jobs, and earnings still need live review."
+    },
+    {
+      "type": "table",
+      "title": "Sector Rotation - SPDR Map",
+      "headers": [
+        "ETF",
+        "Sector",
+        "Rotation Read",
+        "Flow Pressure",
+        "Action Bias"
+      ],
+      "rows": [
+        [
+          "XLC",
+          "Communication Services",
+          "Lagging / weak",
+          "Mixed pressure / In line with SPY",
+          "Avoid adds / review trims"
+        ],
+        [
+          "XLY",
+          "Consumer Discretionary",
+          "Lagging / weak",
+          "Mixed pressure / In line with SPY",
+          "Avoid adds / review trims"
+        ],
+        [
+          "XLP",
+          "Consumer Staples",
+          "Lagging / weak",
+          "Mixed pressure / In line with SPY",
+          "Avoid adds / review trims"
+        ],
+        [
+          "XLE",
+          "Energy",
+          "Lagging / weak",
+          "Mixed pressure / In line with SPY",
+          "Avoid adds / review trims"
+        ],
+        [
+          "XLF",
+          "Financials",
+          "Lagging / weak",
+          "Mixed pressure / In line with SPY",
+          "Avoid adds / review trims"
+        ],
+        [
+          "XLV",
+          "Healthcare",
+          "Lagging / weak",
+          "Mixed pressure / In line with SPY",
+          "Avoid adds / review trims"
+        ],
+        [
+          "XLI",
+          "Industrials",
+          "Lagging / weak",
+          "Mixed pressure / In line with SPY",
+          "Avoid adds / review trims"
+        ],
+        [
+          "XLB",
+          "Materials",
+          "Lagging / weak",
+          "Mixed pressure / In line with SPY",
+          "Avoid adds / review trims"
+        ],
+        [
+          "XLRE",
+          "Real Estate",
+          "Lagging / weak",
+          "Mixed pressure / In line with SPY",
+          "Avoid adds / review trims"
+        ],
+        [
+          "XLK",
+          "Technology",
+          "Lagging / weak",
+          "Mixed pressure / In line with SPY",
+          "Avoid adds / review trims"
+        ],
+        [
+          "XLU",
+          "Utilities",
+          "Lagging / weak",
+          "Mixed pressure / In line with SPY",
+          "Avoid adds / review trims"
+        ]
+      ]
+    },
+    {
+      "type": "paragraph",
+      "title": "Sector Summary",
+      "text": "Leadership requires both trend confirmation and relative strength versus SPY. Mixed or lagging sectors are not add candidates without a separate macro catalyst."
+    },
+    {
+      "type": "table",
+      "title": "Technical Confirmation Snapshot",
+      "headers": [
+        "ETF",
+        "Sector",
+        "Price vs 20 EMA",
+        "Price vs 50 SMA",
+        "Price vs 200 SMA",
+        "20/50 Crossover",
+        "50/200 Trend",
+        "MACD vs Signal",
+        "MACD Zero",
+        "RS vs SPY"
+      ],
+      "rows": [
+        [
+          "XLC",
+          "Communication Services",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "In line with SPY"
+        ],
+        [
+          "XLY",
+          "Consumer Discretionary",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "In line with SPY"
+        ],
+        [
+          "XLP",
+          "Consumer Staples",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "In line with SPY"
+        ],
+        [
+          "XLE",
+          "Energy",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "In line with SPY"
+        ],
+        [
+          "XLF",
+          "Financials",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "In line with SPY"
+        ],
+        [
+          "XLV",
+          "Healthcare",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "In line with SPY"
+        ],
+        [
+          "XLI",
+          "Industrials",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "In line with SPY"
+        ],
+        [
+          "XLB",
+          "Materials",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "In line with SPY"
+        ],
+        [
+          "XLRE",
+          "Real Estate",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "In line with SPY"
+        ],
+        [
+          "XLK",
+          "Technology",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "In line with SPY"
+        ],
+        [
+          "XLU",
+          "Utilities",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "n/a",
+          "In line with SPY"
+        ]
+      ]
+    },
+    {
+      "type": "paragraph",
+      "title": "Prior Week Recap + Forward Trend",
+      "text": "Forward trend: SPY is Needs data with 20-day change of 0.00%. Confirmed technical leadership: none. Weak/lagging sectors: XLC Communication Services, XLY Consumer Discretionary, XLP Consumer Staples, XLE Energy. Use live macro/news and earnings checks before trading."
+    },
+    {
+      "type": "table",
+      "title": "Raj Portfolio Impact - Exact Actions",
+      "headers": [
+        "Ticker",
+        "Qty Held",
+        "Cost Basis",
+        "Current Value",
+        "Unrealized $",
+        "P&L %",
+        "Tolerance Status",
+        "Thesis",
+        "Exact Action",
+        "Action Qty",
+        "Est. $ Value",
+        "Reason / Price Source",
+        "Sleeve"
+      ],
+      "rows": [
+        [
+          "(NO TICKER)",
+          "59000",
+          "$59,000.00",
+          "$59,000.00",
+          "$0.00",
+          "0.00%",
+          "Overweight safety",
+          "Principal/income stabilizer; watch safety overweight.",
+          "Trim-QTY 2950",
+          "2950",
+          "$295,000.00",
+          "Safety sleeve overlap; trim only if reallocating to confirmed leadership. Estimate uses E*TRADE institution price/value. Sector proxy BIL = Needs data (0.00).",
+          "Fixed Income Safety"
+        ],
+        [
+          "MS",
+          "10",
+          "$1,294.20",
+          "$2,120.30",
+          "$826.10",
+          "63.83%",
+          "Profit outlier",
+          "Capital markets and wealth-management exposure.",
+          "Trim-QTY 1",
+          "1",
+          "$212.03",
+          "Profit outlier and mapped trend is not leadership. Estimate uses E*TRADE institution price/value. Sector proxy XLF = Needs data (0.00).",
+          "Financials"
+        ],
+        [
+          "STT",
+          "7",
+          "$690.20",
+          "$1,176.77",
+          "$486.57",
+          "70.50%",
+          "Profit outlier",
+          "Custody bank / asset-servicing exposure.",
+          "Trim-QTY 1",
+          "1",
+          "$168.11",
+          "Profit outlier and mapped trend is not leadership. Estimate uses E*TRADE institution price/value. Sector proxy XLF = Needs data (0.00).",
+          "Financials"
+        ],
+        [
+          "SPYM",
+          "100",
+          "$8,361.50",
+          "$8,576.00",
+          "$214.50",
+          "2.57%",
+          "Out of tolerance",
+          "Low-cost S&P 500 core exposure.",
+          "Sell-QTY 15",
+          "15",
+          "$1,286.40",
+          "Weak mapped trend plus drawdown/tolerance pressure. Estimate uses E*TRADE institution price/value. Sector proxy SPY = Needs data (0.00).",
+          "Core Equity"
+        ],
+        [
+          "SGOL",
+          "152",
+          "$6,864.94",
+          "$5,893.04",
+          "$-971.90",
+          "-14.16%",
+          "Weak",
+          "Gold hedge against real-rate, dollar, and geopolitical stress.",
+          "Sell-QTY 22",
+          "22",
+          "$852.94",
+          "Weak mapped trend plus drawdown/tolerance pressure. Estimate uses E*TRADE institution price/value. Sector proxy GLD = Needs data (0.00).",
+          "Gold / Alternative"
+        ],
+        [
+          "BAC",
+          "100",
+          "$5,089.50",
+          "$5,788.00",
+          "$698.50",
+          "13.72%",
+          "Out of tolerance",
+          "Bank exposure; sensitive to rates, credit, and yield curve.",
+          "Sell-QTY 15",
+          "15",
+          "$868.20",
+          "Weak mapped trend plus drawdown/tolerance pressure. Estimate uses E*TRADE institution price/value. Sector proxy XLF = Needs data (0.00).",
+          "Financials"
+        ],
+        [
+          "SCHG",
+          "100",
+          "$3,405.50",
+          "$3,284.00",
+          "$-121.50",
+          "-3.57%",
+          "Out of tolerance",
+          "Large-cap growth tilt; sensitive to rates and tech leadership.",
+          "Sell-QTY 15",
+          "15",
+          "$492.60",
+          "Weak mapped trend plus drawdown/tolerance pressure. Estimate uses E*TRADE institution price/value. Sector proxy XLK = Needs data (0.00).",
+          "Growth Equity"
+        ],
+        [
+          "SPMO",
+          "20",
+          "$3,168.80",
+          "$3,084.00",
+          "$-84.80",
+          "-2.68%",
+          "Out of tolerance",
+          "Momentum factor exposure tied to risk appetite.",
+          "Sell-QTY 3",
+          "3",
+          "$462.60",
+          "Weak mapped trend plus drawdown/tolerance pressure. Estimate uses E*TRADE institution price/value. Sector proxy SPY = Needs data (0.00).",
+          "Momentum Equity"
+        ],
+        [
+          "SONY",
+          "100",
+          "$2,160.00",
+          "$1,971.00",
+          "$-189.00",
+          "-8.75%",
+          "Out of tolerance",
+          "Consumer technology, gaming, media, and ADR exposure.",
+          "Sell-QTY 15",
+          "15",
+          "$295.65",
+          "Weak mapped trend plus drawdown/tolerance pressure. Estimate uses E*TRADE institution price/value. Sector proxy XLY = Needs data (0.00).",
+          "Consumer / ADR"
+        ],
+        [
+          "VRIG",
+          "247",
+          "$6,199.06",
+          "$6,189.82",
+          "$-9.24",
+          "-0.15%",
+          "Income tilt",
+          "Floating-rate investment-grade income stabilizer.",
+          "Hold",
+          "0",
+          "$0.00",
+          "Hold-no-add until macro/news confirms. Mapped trend: Needs data. Price source: E*TRADE institution price/value. Sector proxy BIL = Needs data (0.00).",
+          "Floating Rate Safety"
+        ],
+        [
+          "JPST",
+          "100",
+          "$5,059.56",
+          "$5,057.00",
+          "$-2.56",
+          "-0.05%",
+          "Income tilt",
+          "Ultra-short income stabilizer.",
+          "Hold",
+          "0",
+          "$0.00",
+          "Hold-no-add until macro/news confirms. Mapped trend: Needs data. Price source: E*TRADE institution price/value. Sector proxy BIL = Needs data (0.00).",
+          "Short Duration Safety"
+        ],
+        [
+          "CLOZ",
+          "100",
+          "$2,653.97",
+          "$2,640.90",
+          "$-13.07",
+          "-0.49%",
+          "Income tilt",
+          "CLO credit-income sleeve; sensitive to credit spreads.",
+          "Hold",
+          "0",
+          "$0.00",
+          "Hold-no-add until macro/news confirms. Mapped trend: Needs data. Price source: E*TRADE institution price/value. Sector proxy HYG = Needs data (0.00).",
+          "Credit Income"
+        ],
+        [
+          "HTD",
+          "65",
+          "$1,495.85",
+          "$1,664.00",
+          "$168.15",
+          "11.24%",
+          "Income tilt",
+          "Dividend-income sleeve with utility/financial income profile.",
+          "Hold",
+          "0",
+          "$0.00",
+          "Hold-no-add until macro/news confirms. Mapped trend: Needs data. Price source: E*TRADE institution price/value. Sector proxy XLU = Needs data (0.00).",
+          "Income Equity"
+        ],
+        [
+          "LMT",
+          "3",
+          "$1,340.97",
+          "$1,522.20",
+          "$181.23",
+          "13.51%",
+          "Too small",
+          "Defense industrial; can act as geopolitical hedge.",
+          "Hold",
+          "0",
+          "$0.00",
+          "Hold-no-add until macro/news confirms. Mapped trend: Needs data. Price source: E*TRADE institution price/value. Sector proxy XLI = Needs data (0.00).",
+          "Defense / Industrials"
+        ],
+        [
+          "DIA",
+          "1",
+          "$425.50",
+          "$517.75",
+          "$92.25",
+          "21.68%",
+          "Too small",
+          "Dow blue-chip exposure.",
+          "Hold",
+          "0",
+          "$0.00",
+          "Hold-no-add until macro/news confirms. Mapped trend: Needs data. Price source: E*TRADE institution price/value. Sector proxy DIA = Needs data (0.00).",
+          "Core Equity"
+        ]
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Total Suggested Trims and Primary Goal",
+      "headers": [
+        "Metric",
+        "Value"
+      ],
+      "rows": [
+        [
+          "Total suggested trims",
+          "$295,380.14"
+        ],
+        [
+          "Total suggested sells",
+          "$4,258.39"
+        ],
+        [
+          "Total suggested adds",
+          "$0.00"
+        ],
+        [
+          "Primary goal",
+          "Keep actions small, reduce overlap, protect profit outliers, and add only when macro/sector thesis confirms technical trend."
+        ]
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Aggressive Growth Setup With Risk Controls",
+      "headers": [
+        "Setup",
+        "Trigger",
+        "Risk Control",
+        "Action Bias"
+      ],
+      "rows": [
+        [
+          "Core growth add",
+          "SPY/XLK above 20 EMA and 50 SMA with MACD > signal",
+          "Starter size only; do not add into weak macro",
+          "Add-QTY only when confirmed"
+        ],
+        [
+          "Profit protection",
+          "Large P&L outlier or overweight sleeve",
+          "Trim 5% to 15%, not full exit",
+          "Trim-QTY"
+        ],
+        [
+          "Safety redeployment",
+          "Safety sleeve overweight and growth leadership confirmed",
+          "Keep liquidity buffer",
+          "Gradual shift only"
+        ],
+        [
+          "Avoid weak trend",
+          "Below 20 EMA/50 SMA with MACD < signal",
+          "No averaging down without macro confirmation",
+          "Avoid or Hold"
+        ]
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Key Catalysts to Watch",
+      "headers": [
+        "Catalyst",
+        "Why It Matters"
+      ],
+      "rows": [
+        [
+          "Fed/FOMC and Treasury yields",
+          "Affects growth multiples, banks, real estate, and fixed income."
+        ],
+        [
+          "Oil and geopolitical headlines",
+          "Affects energy, inflation pressure, defense, and gold."
+        ],
+        [
+          "Earnings guidance",
+          "Can override sector trend."
+        ],
+        [
+          "Credit spreads / liquidity",
+          "Important for CLOZ, banks, and risk appetite."
+        ],
+        [
+          "SPY breadth and sector relative strength",
+          "Confirms whether rotation is broadening or narrowing."
+        ]
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Chicago-Style Source List",
+      "headers": [
+        "Source",
+        "Use"
+      ],
+      "rows": [
+        [
+          "Connected E*TRADE Holdings tab",
+          "Portfolio quantities, prices, values, weights, and P&L."
+        ],
+        [
+          "Yahoo Finance / Stooq fallback",
+          "Daily price data for technical engine."
+        ],
+        [
+          "SPDR sector ETF map",
+          "11-sector rotation framework."
+        ],
+        [
+          "SPY benchmark",
+          "Relative-strength benchmark."
+        ],
+        [
+          "Manual live-news layer",
+          "Macro, Fed, inflation, earnings, and geopolitical catalysts."
+        ]
+      ]
+    }
+  ],
+  "request_id": "20260627_212312_73fdf4e7",
+  "request_path": "runtime/market-inputs/request_20260627_212312_73fdf4e7.json",
+  "engine": "GitHub Actions Python market_analysis_engine.py"
+}
