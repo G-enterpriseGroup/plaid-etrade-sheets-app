@@ -10,7 +10,7 @@
  *   GITHUB_MARKET_WORKFLOW = market-analysis.yml
  * Run: buildMarketAnalysisReport()
  * Test: testMarketGitHubConnection()
- * Version: github-actions-python-v2
+ * Version: github-actions-python-v3
  */
 
 var MR_GH = {
@@ -45,14 +45,24 @@ function testMarketGitHubConnection() {
   return 'GitHub connected. Repo: ' + repo.full_name + ' | Default branch: ' + repo.default_branch;
 }
 
+function checkMarketGitHubConfig() {
+  var props = PropertiesService.getScriptProperties();
+  var hasAccess = !!props.getProperty(MR_GH.accessProp);
+  var repo = props.getProperty(MR_GH.repoProp) || MR_GH.defaultRepo;
+  var branch = props.getProperty(MR_GH.branchProp) || MR_GH.defaultBranch;
+  var workflow = props.getProperty(MR_GH.workflowProp) || MR_GH.defaultWorkflow;
+  if (!hasAccess) return 'Missing Script Property: GITHUB_MARKET_ACCESS';
+  return 'Config found. Repo: ' + repo + ' | Branch: ' + branch + ' | Workflow: ' + workflow + ' | Access value: saved';
+}
+
 function setMarketGitHubConfig(accessValue, repoFullName, branch, workflowFile) {
-  if (!accessValue) throw new Error('Missing GitHub access value.');
+  if (!accessValue) return checkMarketGitHubConfig() + '\nNote: you ran setMarketGitHubConfig without arguments. If you already pasted Script Properties manually, run testMarketGitHubConnection next.';
   var props = PropertiesService.getScriptProperties();
   props.setProperty(MR_GH.accessProp, String(accessValue).trim());
   props.setProperty(MR_GH.repoProp, String(repoFullName || MR_GH.defaultRepo).trim());
   props.setProperty(MR_GH.branchProp, String(branch || MR_GH.defaultBranch).trim());
   props.setProperty(MR_GH.workflowProp, String(workflowFile || MR_GH.defaultWorkflow).trim());
-  return 'Market GitHub settings saved.';
+  return 'Market GitHub settings saved. Now run testMarketGitHubConnection.';
 }
 
 function mrBuildGitHubRequestPayload_() {
