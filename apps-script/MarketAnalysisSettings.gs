@@ -2,6 +2,7 @@
  * Portfolio Link Market Analysis settings helper.
  * Keeps the core MarketAnalysisReport.gs engine untouched.
  * Adds sidebar-controlled trim P&L method handling.
+ * FIFO now applies to the existing report first, so changing the method does not rebuild the slow market cache.
  */
 
 var MARKET_TRIM_PNL_METHOD_PROP = 'MARKET_TRIM_PNL_METHOD';
@@ -20,9 +21,17 @@ function setMarketTrimPnlMethod(method) {
 
 function buildMarketAnalysisReportFromSidebar(method) {
   setMarketTrimPnlMethod(method);
+
+  // If a report already exists, changing FIFO/average only needs to update Est. P&L.
+  // This avoids rerunning the slow GoogleFinance history engine just to switch P&L method.
+  if (mrMarketHasPortfolioTable_()) {
+    var updated = mrMarketApplyTrimPnlMethod_();
+    return 'Trim P&L method applied to existing report. Method: ' + mrMarketTrimPnlMethodLabel_() + '. Rows updated: ' + updated + '. Use a full market refresh only when you need new market data.';
+  }
+
   var message = buildMarketAnalysisReport();
-  mrMarketApplyTrimPnlMethod_();
-  return message + ' Trim P&L method: ' + mrMarketTrimPnlMethodLabel_() + '.';
+  var updatedAfterBuild = mrMarketApplyTrimPnlMethod_();
+  return message + ' Trim P&L method: ' + mrMarketTrimPnlMethodLabel_() + '. Rows updated: ' + updatedAfterBuild + '.';
 }
 
 function mrMarketNormalizeTrimPnlMethod_(method) {
@@ -34,14 +43,26 @@ function mrMarketTrimPnlMethodLabel_() {
   return getMarketTrimPnlMethod() === 'FIFO' ? 'FIFO using Transactions tax lots when available' : 'Evenly spread average-cost estimate';
 }
 
+function mrMarketHasPortfolioTable_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(MARKET_REPORT_SHEET);
+  if (!sh || sh.getLastRow() < 2) return false;
+  var scanRows = Math.min(sh.getLastRow(), 220);
+  var display = sh.getRange(1, 1, scanRows, Math.min(sh.getLastColumn(), 13)).getDisplayValues();
+  for (var r = 0; r < display.length; r++) {
+    if (display[r].indexOf('Ticker') >= 0 && display[r].indexOf('Exact Action') >= 0 && display[r].indexOf('Est. P&L') >= 0) return true;
+  }
+  return false;
+}
+
 function mrMarketApplyTrimPnlMethod_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(MARKET_REPORT_SHEET);
-  if (!sh) return;
+  if (!sh) return 0;
 
   var lastRow = sh.getLastRow();
   var lastCol = Math.min(sh.getLastColumn(), 13);
-  if (lastRow < 2 || lastCol < 2) return;
+  if (lastRow < 2 || lastCol < 2) return 0;
 
   var display = sh.getRange(1, 1, lastRow, lastCol).getDisplayValues();
   var headerRow = -1;
@@ -51,7 +72,7 @@ function mrMarketApplyTrimPnlMethod_() {
       break;
     }
   }
-  if (headerRow < 1) return;
+  if (headerRow < 1) return 0;
 
   var headers = display[headerRow - 1];
   var idx = {};
@@ -62,48 +83,59 @@ function mrMarketApplyTrimPnlMethod_() {
   var estPnlCol = idx['Est. P&L'];
   var estValueCol = idx['Est. $ Value'];
   var reasonCol = idx['Reason / Price Source'];
-  if (!actionCol || !qtyCol || !totalPnlCol || !estPnlCol || !estValueCol) return;
+  if (!actionCol || !qtyCol || !totalPnlCol || !estPnlCol || !estValueCol) return 0;
 
-  var method = getMarketTrimPnlMethod();
+  var jobs = [];
+  var neededTickers = {};
   for (var row = headerRow + 1; row <= lastRow; row++) {
-    var ticker = String(sh.getRange(row, 1).getDisplayValue() || '').trim().toUpperCase();
-    var action = String(sh.getRange(row, actionCol).getDisplayValue() || '').trim();
+    var rowValues = display[row - 1] || [];
+    var ticker = String(rowValues[0] || '').trim().toUpperCase();
+    var action = String(rowValues[actionCol - 1] || '').trim();
     if (!ticker || ticker.indexOf('TOTAL') === 0 || ticker.indexOf('AGGRESSIVE') === 0) break;
     if (action.indexOf('Trim-QTY') !== 0) continue;
 
     var trimQty = mrMarketActionQty_(action);
     if (!trimQty) continue;
 
-    var heldQty = mrMarketNum_(sh.getRange(row, qtyCol).getDisplayValue());
-    var totalPnl = mrMarketNum_(sh.getRange(row, totalPnlCol).getDisplayValue());
-    var estValue = mrMarketNum_(sh.getRange(row, estValueCol).getDisplayValue());
+    var heldQty = mrMarketNum_(rowValues[qtyCol - 1]);
+    var totalPnl = mrMarketNum_(rowValues[totalPnlCol - 1]);
+    var estValue = mrMarketNum_(rowValues[estValueCol - 1]);
     var sellPrice = trimQty ? estValue / trimQty : 0;
     var avgPnl = heldQty ? (totalPnl / heldQty) * trimQty : 0;
-    var result = {pnl: avgPnl, note: 'Average method: estimated by spreading current unrealized P&L evenly across held shares.'};
 
-    if (method === 'FIFO') {
-      result = mrMarketEstimateFifoTrimPnl_(ticker, trimQty, sellPrice, avgPnl);
-    }
-
-    sh.getRange(row, estPnlCol).setValue(mrMarketMoney_(result.pnl));
-    if (reasonCol) {
-      var reason = String(sh.getRange(row, reasonCol).getDisplayValue() || '');
-      reason = mrMarketStripMethodNotes_(reason);
-      sh.getRange(row, reasonCol).setValue(reason + ' ' + result.note);
-    }
+    jobs.push({row: row, ticker: ticker, trimQty: trimQty, sellPrice: sellPrice, avgPnl: avgPnl, reason: String(rowValues[reasonCol - 1] || '')});
+    neededTickers[ticker] = true;
   }
+  if (!jobs.length) return 0;
+
+  var method = getMarketTrimPnlMethod();
+  var lotsByTicker = method === 'FIFO' ? mrMarketBuildOpenLotsByTicker_(neededTickers) : {};
+  var updated = 0;
+
+  jobs.forEach(function(job) {
+    var result = {pnl: job.avgPnl, note: 'Average method: estimated by spreading current unrealized P&L evenly across held shares.'};
+    if (method === 'FIFO') result = mrMarketEstimateFifoTrimPnl_(job.ticker, job.trimQty, job.sellPrice, job.avgPnl, lotsByTicker[job.ticker] || []);
+
+    sh.getRange(job.row, estPnlCol).setValue(mrMarketMoney_(result.pnl));
+    if (reasonCol) {
+      var cleanReason = mrMarketStripMethodNotes_(job.reason);
+      sh.getRange(job.row, reasonCol).setValue(cleanReason + ' ' + result.note);
+    }
+    updated++;
+  });
+
+  return updated;
 }
 
-function mrMarketEstimateFifoTrimPnl_(ticker, trimQty, sellPrice, fallbackPnl) {
-  var lotsData = mrMarketBuildOpenLots_(ticker);
-  var lots = lotsData.lots || [];
+function mrMarketEstimateFifoTrimPnl_(ticker, trimQty, sellPrice, fallbackPnl, lots) {
   var q = Number(trimQty || 0);
   var pnl = 0;
   var matched = 0;
+  var fifoLots = (lots || []).map(function(lot) { return {qty: lot.qty, costPerShare: lot.costPerShare}; });
 
-  for (var i = 0; i < lots.length && q > 0; i++) {
-    var take = Math.min(q, lots[i].qty);
-    pnl += take * (sellPrice - lots[i].costPerShare);
+  for (var i = 0; i < fifoLots.length && q > 0; i++) {
+    var take = Math.min(q, fifoLots[i].qty);
+    pnl += take * (sellPrice - fifoLots[i].costPerShare);
     matched += take;
     q -= take;
   }
@@ -115,23 +147,27 @@ function mrMarketEstimateFifoTrimPnl_(ticker, trimQty, sellPrice, fallbackPnl) {
     };
   }
 
-  var missing = trimQty - matched;
   return {
     pnl: fallbackPnl,
     note: 'FIFO selected, but only ' + mrMarketQty_(matched) + ' of ' + mrMarketQty_(trimQty) + ' shares had priced FIFO lots in Transactions; used aggregate average estimate for this row.'
   };
 }
 
-function mrMarketBuildOpenLots_(ticker) {
-  var txs = mrMarketReadTransactions_(ticker);
-  var lots = [];
+function mrMarketBuildOpenLotsByTicker_(neededTickers) {
+  var txs = mrMarketReadTransactionsForTickers_(neededTickers);
+  var lotsByTicker = {};
+
   txs.forEach(function(tx) {
-    if (tx.isBuy && tx.qty > 0 && tx.costPerShare > 0) {
-      lots.push({qty: tx.qty, costPerShare: tx.costPerShare, date: tx.date});
+    if (!lotsByTicker[tx.ticker]) lotsByTicker[tx.ticker] = [];
+    var lots = lotsByTicker[tx.ticker];
+
+    if (tx.isBuy && tx.qtyAbs > 0 && tx.costPerShare > 0) {
+      lots.push({qty: tx.qtyAbs, costPerShare: tx.costPerShare, date: tx.date});
       return;
     }
-    if (tx.isSell && tx.qty < 0) {
-      var sellQty = Math.abs(tx.qty);
+
+    if (tx.isSell && tx.qtyAbs > 0) {
+      var sellQty = tx.qtyAbs;
       while (sellQty > 0 && lots.length) {
         var take = Math.min(sellQty, lots[0].qty);
         lots[0].qty -= take;
@@ -140,51 +176,68 @@ function mrMarketBuildOpenLots_(ticker) {
       }
     }
   });
-  return {lots: lots, transactions: txs.length};
+
+  return lotsByTicker;
 }
 
-function mrMarketReadTransactions_(ticker) {
+function mrMarketReadTransactionsForTickers_(neededTickers) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(MARKET_TRANSACTIONS_SHEET);
   if (!sh) return [];
-  var values = sh.getDataRange().getDisplayValues();
-  if (!values || values.length < 2) return [];
 
+  var lastRow = sh.getLastRow();
+  var lastCol = sh.getLastColumn();
+  if (lastRow < 2 || lastCol < 2) return [];
+
+  // One read only. This was the main FIFO performance fix.
+  var values = sh.getRange(1, 1, lastRow, lastCol).getDisplayValues();
   var headers = values[0].map(mrMarketNorm_);
   var ix = {};
   headers.forEach(function(h, i) { ix[h] = i; });
-  function get(row, key) { var i = ix[key]; return i === undefined ? '' : row[i]; }
+
+  function get(row, keys) {
+    for (var k = 0; k < keys.length; k++) {
+      var i = ix[keys[k]];
+      if (i !== undefined) return row[i];
+    }
+    return '';
+  }
 
   var out = [];
   values.slice(1).forEach(function(row, n) {
-    var t = String(get(row, 'ticker_symbol') || '').trim().toUpperCase();
-    if (t !== ticker) return;
-    if (!mrMarketIncludeAccount_(get(row, 'account_name'))) return;
+    var ticker = String(get(row, ['ticker_symbol','ticker','symbol']) || '').trim().toUpperCase();
+    if (!ticker || !neededTickers[ticker]) return;
+    if (!mrMarketIncludeAccount_(get(row, ['account_name','account','account_id']))) return;
 
-    var type = String(get(row, 'type') || '').toLowerCase();
-    var subtype = String(get(row, 'subtype') || '').toLowerCase();
-    var name = String(get(row, 'name') || '').toLowerCase();
-    var qty = mrMarketNum_(get(row, 'quantity'));
-    var price = mrMarketNum_(get(row, 'price'));
-    var amount = mrMarketNum_(get(row, 'amount'));
-    var fees = Math.abs(mrMarketNum_(get(row, 'fees')));
-    var date = mrMarketDate_(get(row, 'date'));
+    var type = String(get(row, ['type','transaction_type']) || '').toLowerCase();
+    var subtype = String(get(row, ['subtype','transaction_subtype']) || '').toLowerCase();
+    var name = String(get(row, ['name','description','transaction_name']) || '').toLowerCase();
+    var qty = mrMarketNum_(get(row, ['quantity','qty','units','shares']));
+    var qtyAbs = Math.abs(qty);
+    if (!qtyAbs) return;
 
-    var looksBuy = type === 'buy' || subtype === 'buy' || name.indexOf('bot ') === 0 || name.indexOf('bought ') === 0;
-    var looksSell = type === 'sell' || subtype === 'sell' || name.indexOf('sold ') === 0;
-    var isBuy = qty > 0 && price > 0 && looksBuy;
-    var isSell = qty < 0 && looksSell;
+    var price = mrMarketNum_(get(row, ['price','unit_price','security_price','institution_price']));
+    var amount = mrMarketNum_(get(row, ['amount','total_amount','value']));
+    var fees = Math.abs(mrMarketNum_(get(row, ['fees','fee','commission','commissions'])));
+    var date = mrMarketDate_(get(row, ['date','transaction_date','posted_date']));
+
+    var text = type + ' ' + subtype + ' ' + name;
+    var looksBuy = /\bbuy\b|\bbought\b|\bbot\b/.test(text);
+    var looksSell = /\bsell\b|\bsold\b/.test(text);
+    var isBuy = looksBuy && qtyAbs > 0;
+    var isSell = looksSell && qtyAbs > 0;
     var costPerShare = 0;
 
     if (isBuy) {
-      costPerShare = amount > 0 && qty > 0 ? amount / qty : price + (qty ? fees / qty : 0);
+      costPerShare = price > 0 ? price + (fees / qtyAbs) : (Math.abs(amount) / qtyAbs);
     }
 
     out.push({
       date: date,
       seq: n,
-      ticker: t,
+      ticker: ticker,
       qty: qty,
+      qtyAbs: qtyAbs,
       price: price,
       amount: amount,
       fees: fees,
