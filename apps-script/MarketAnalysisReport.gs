@@ -3,7 +3,7 @@
  * Reads Holdings and creates Report Market Analysis.
  * Run: buildMarketAnalysisReport()
  * Debug: debugMarketAnalysisHoldingsHeaders()
- * Version: robust-holdings-header-scan-v2
+ * Version: fixed-column-fallback-v3
  */
 
 var MARKET_REPORT = {
@@ -47,7 +47,7 @@ function buildMarketAnalysisReport() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var holdings = mrReadHoldings_(ss);
   if (!holdings.length) {
-    throw new Error('No usable holdings found. The Holdings tab exists, but no rows matched after header scan/exclusions. Run debugMarketAnalysisHoldingsHeaders() and send the result.');
+    throw new Error('No usable holdings found. Run debugMarketAnalysisHoldingsHeaders() and send the result.');
   }
 
   var sh = ss.getSheetByName(MARKET_REPORT.reportSheet) || ss.insertSheet(MARKET_REPORT.reportSheet);
@@ -126,33 +126,37 @@ function debugMarketAnalysisHoldingsHeaders() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(MARKET_REPORT.holdingsSheet);
   if (!sh) return 'No Holdings tab found.';
-  var values = sh.getDataRange().getValues();
-  var found = mrFindHeaderRow_(values);
-  if (!found) {
-    return 'Could not find Holdings header row. First row values: ' + JSON.stringify(values[0] || []);
+  var display = sh.getDataRange().getDisplayValues();
+  var found = mrFindHeaderRow_(display);
+  var rows = [];
+  for (var i = 0; i < Math.min(8, display.length); i++) {
+    rows.push('Row ' + (i + 1) + ': ' + JSON.stringify(display[i].slice(0, 12)));
   }
-  var rows = mrReadHoldings_(ss);
-  return 'Header row detected at sheet row ' + (found.headerRowIndex + 1) + '. Holdings rows included after exclusions: ' + rows.length + '. Headers detected: ' + JSON.stringify(found.headers);
+  var included = 0;
+  try { included = mrReadHoldings_(ss).length; } catch (e) { included = 'ERROR: ' + e.message; }
+  return 'Header found: ' + (found ? 'YES row ' + (found.headerRowIndex + 1) : 'NO, using fixed fallback') + '\nIncluded rows: ' + included + '\nFirst rows:\n' + rows.join('\n');
 }
 
 function mrReadHoldings_(ss) {
   var sh = ss.getSheetByName(MARKET_REPORT.holdingsSheet);
   if (!sh) throw new Error('Missing Holdings tab.');
-  var values = sh.getDataRange().getValues();
-  if (values.length < 2) return [];
+  var raw = sh.getDataRange().getValues();
+  var display = sh.getDataRange().getDisplayValues();
+  if (display.length < 1) return [];
 
-  var found = mrFindHeaderRow_(values);
-  if (!found) {
-    throw new Error('Could not find the Holdings header row. Make sure the sheet has columns like ticker_symbol, security_name, quantity, institution_value.');
-  }
-
-  var ix = found.index;
+  var found = mrFindHeaderRow_(display);
+  var ix = found ? found.index : mrStandardIndex_();
+  var startRow = found ? found.headerRowIndex + 1 : 0;
   var rows = [];
-  for (var r = found.headerRowIndex + 1; r < values.length; r++) {
-    var row = values[r];
-    var ticker = mrCellByKey_(row, ix, 'ticker_symbol').toUpperCase();
-    var name = mrCellByKey_(row, ix, 'security_name');
-    var type = mrCellByKey_(row, ix, 'security_type').toLowerCase();
+
+  for (var r = startRow; r < display.length; r++) {
+    var drow = mrNormalizeRowShape_(display[r]);
+    var rrow = mrNormalizeRowShape_(raw[r]);
+    if (mrLooksLikeHeaderRow_(drow)) continue;
+
+    var ticker = mrCellByKey_(drow, ix, 'ticker_symbol').toUpperCase();
+    var name = mrCellByKey_(drow, ix, 'security_name');
+    var type = mrCellByKey_(drow, ix, 'security_type').toLowerCase();
     if (!ticker && !name) continue;
     if (mrExclude_(ticker, name, type)) continue;
 
@@ -160,43 +164,101 @@ function mrReadHoldings_(ss) {
       ticker: ticker || '(no ticker)',
       name: name,
       type: type,
-      subtype: mrCellByKey_(row, ix, 'security_subtype'),
-      qty: mrNum_(mrValueByKey_(row, ix, 'quantity')),
-      cost: mrNum_(mrValueByKey_(row, ix, 'cost_basis')),
-      price: mrNum_(mrValueByKey_(row, ix, 'institution_price')),
-      value: mrNum_(mrValueByKey_(row, ix, 'institution_value')) || mrNum_(mrValueByKey_(row, ix, 'calculated_market_value')),
-      pnl: mrNum_(mrValueByKey_(row, ix, 'unrealized_gain_loss')),
-      pnlPct: mrPct_(mrValueByKey_(row, ix, 'unrealized_gain_loss_pct')),
-      weight: mrPct_(mrValueByKey_(row, ix, 'portfolio_weight'))
+      subtype: mrCellByKey_(drow, ix, 'security_subtype'),
+      qty: mrNum_(mrValueByKey_(rrow, drow, ix, 'quantity')),
+      cost: mrNum_(mrValueByKey_(rrow, drow, ix, 'cost_basis')),
+      price: mrNum_(mrValueByKey_(rrow, drow, ix, 'institution_price')),
+      value: mrNum_(mrValueByKey_(rrow, drow, ix, 'institution_value')) || mrNum_(mrValueByKey_(rrow, drow, ix, 'calculated_market_value')),
+      pnl: mrNum_(mrValueByKey_(rrow, drow, ix, 'unrealized_gain_loss')),
+      pnlPct: mrPct_(mrValueByKey_(rrow, drow, ix, 'unrealized_gain_loss_pct')),
+      weight: mrPct_(mrValueByKey_(rrow, drow, ix, 'portfolio_weight'))
     });
   }
   return rows;
 }
 
-function mrFindHeaderRow_(values) {
-  var scanRows = Math.min(values.length, 25);
+function mrNormalizeRowShape_(row) {
+  row = row || [];
+  if (row.length && String(row[0] || '').indexOf('\t') >= 0) {
+    var first = String(row[0] || '');
+    var restBlank = true;
+    for (var i = 1; i < row.length; i++) if (String(row[i] || '').trim()) restBlank = false;
+    if (restBlank) return first.split('\t');
+  }
+  return row;
+}
+
+function mrFindHeaderRow_(displayValues) {
+  var scanRows = Math.min(displayValues.length, 75);
   for (var r = 0; r < scanRows; r++) {
-    var headers = values[r].map(function(h) { return mrNormHeader_(h); });
+    var row = mrNormalizeRowShape_(displayValues[r]);
     var index = {};
-    headers.forEach(function(h, i) { if (h) index[h] = i; });
+    for (var c = 0; c < row.length; c++) {
+      var h = mrNormHeader_(row[c]);
+      if (h) index[h] = c;
+    }
+    var aliased = mrAliasIndex_(index);
     var score = 0;
     ['ticker_symbol', 'security_name', 'quantity', 'institution_value'].forEach(function(k) {
-      if (index[k] !== undefined) score++;
+      if (aliased[k] !== undefined) score++;
     });
-    if (score >= 3) {
-      return { headerRowIndex: r, headers: headers, index: index };
+    if (score >= 2 && (aliased.ticker_symbol !== undefined || aliased.security_name !== undefined)) {
+      return { headerRowIndex: r, index: aliased };
     }
   }
   return null;
 }
 
+function mrAliasIndex_(index) {
+  var out = {};
+  function pick(target, names) {
+    for (var i = 0; i < names.length; i++) {
+      if (index[names[i]] !== undefined) { out[target] = index[names[i]]; return; }
+    }
+  }
+  pick('institution_name', ['institution_name', 'institution', 'brokerage']);
+  pick('account_name', ['account_name', 'account']);
+  pick('ticker_symbol', ['ticker_symbol', 'ticker', 'symbol']);
+  pick('security_name', ['security_name', 'security', 'name', 'description']);
+  pick('security_type', ['security_type', 'type']);
+  pick('security_subtype', ['security_subtype', 'subtype']);
+  pick('quantity', ['quantity', 'qty', 'shares']);
+  pick('cost_basis', ['cost_basis', 'cost', 'basis']);
+  pick('institution_price', ['institution_price', 'price', 'last_price', 'current_price']);
+  pick('institution_value', ['institution_value', 'value', 'market_value', 'current_value']);
+  pick('calculated_market_value', ['calculated_market_value', 'calculated_value']);
+  pick('unrealized_gain_loss', ['unrealized_gain_loss', 'unrealized', 'gain_loss', 'p_l']);
+  pick('unrealized_gain_loss_pct', ['unrealized_gain_loss_pct', 'p_l_pct', 'gain_loss_pct']);
+  pick('portfolio_weight', ['portfolio_weight', 'weight']);
+  return out;
+}
+
+function mrStandardIndex_() {
+  return {
+    institution_name: 0,
+    account_name: 1,
+    ticker_symbol: 6,
+    security_name: 7,
+    security_type: 8,
+    security_subtype: 9,
+    quantity: 10,
+    cost_basis: 11,
+    institution_price: 12,
+    institution_value: 13,
+    calculated_market_value: 14,
+    unrealized_gain_loss: 15,
+    unrealized_gain_loss_pct: 16,
+    portfolio_weight: 17
+  };
+}
+
+function mrLooksLikeHeaderRow_(row) {
+  var joined = row.map(function(x) { return mrNormHeader_(x); }).join('|');
+  return joined.indexOf('ticker_symbol') >= 0 || joined.indexOf('security_name') >= 0 || joined.indexOf('institution_name') >= 0;
+}
+
 function mrNormHeader_(h) {
-  return String(h || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '_')
-    .replace(/[^a-z0-9_]/g, '')
-    .replace(/^_+|_+$/g, '');
+  return String(h || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '').replace(/^_+|_+$/g, '');
 }
 
 function mrCellByKey_(row, ix, key) {
@@ -206,10 +268,12 @@ function mrCellByKey_(row, ix, key) {
   return String(v === null || v === undefined ? '' : v).trim();
 }
 
-function mrValueByKey_(row, ix, key) {
+function mrValueByKey_(rawRow, displayRow, ix, key) {
   var i = ix[key];
   if (i === undefined || i < 0) return '';
-  return row[i];
+  var raw = rawRow[i];
+  if (raw !== null && raw !== undefined && raw !== '') return raw;
+  return displayRow[i];
 }
 
 function mrExclude_(ticker, name, type) {
@@ -303,7 +367,7 @@ function mrFinalize_(sh, lastRow) {
   sh.autoResizeRows(1, Math.max(1, lastRow));
 }
 
-function mrNum_(x) { if (x === null || x === undefined || x === '') return 0; if (typeof x === 'number') return x; var n = Number(String(x).replace(/[$,%()\s]/g, '').replace(/,/g, '')); return isNaN(n) ? 0 : n; }
+function mrNum_(x) { if (x === null || x === undefined || x === '') return 0; if (typeof x === 'number') return x; var s = String(x).replace(/[,$%\s]/g, '').replace(/[()]/g, ''); var n = Number(s); return isNaN(n) ? 0 : n; }
 function mrPct_(x) { if (x === null || x === undefined || x === '') return 0; if (typeof x === 'number') return Math.abs(x) > 1 ? x / 100 : x; var s = String(x); var n = mrNum_(s); return s.indexOf('%') >= 0 ? n / 100 : n; }
 function mrMoney_(n) { n = Number(n || 0); return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function mrParseMoney_(s) { return mrNum_(s); }
