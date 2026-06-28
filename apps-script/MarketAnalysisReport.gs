@@ -1,16 +1,17 @@
 /**
  * Portfolio Link Market Analysis - GitHub Actions Bridge
  * No Render/Railway/Cloud Run needed.
- * Flow: Holdings tab -> GitHub request JSON -> GitHub Actions Python -> report JSON -> Report Market Analysis tab.
+ * Safe two-step flow so Apps Script does not time out:
+ *   1) startMarketAnalysisReport()
+ *   2) fetchMarketAnalysisReport()
+ * Sidebar buttons call these two functions.
  * Required Script Property:
  *   GITHUB_MARKET_ACCESS = GitHub fine-grained access value with repo Contents read/write + Actions write
  * Optional Script Properties:
  *   GITHUB_REPO_FULL_NAME = G-enterpriseGroup/plaid-etrade-sheets-app
  *   GITHUB_BRANCH = main
  *   GITHUB_MARKET_WORKFLOW = market-analysis.yml
- * Run: buildMarketAnalysisReport()
- * Test: testMarketGitHubConnection()
- * Version: github-actions-python-v3
+ * Version: github-actions-two-step-v4
  */
 
 var MR_GH = {
@@ -18,6 +19,9 @@ var MR_GH = {
   accessProp: 'GITHUB_MARKET_ACCESS',
   branchProp: 'GITHUB_BRANCH',
   workflowProp: 'GITHUB_MARKET_WORKFLOW',
+  lastRequestIdProp: 'MARKET_LAST_REQUEST_ID',
+  lastOutputPathProp: 'MARKET_LAST_OUTPUT_PATH',
+  lastRequestPathProp: 'MARKET_LAST_REQUEST_PATH',
   defaultRepo: 'G-enterpriseGroup/plaid-etrade-sheets-app',
   defaultBranch: 'main',
   defaultWorkflow: 'market-analysis.yml',
@@ -27,6 +31,10 @@ var MR_GH = {
 };
 
 function buildMarketAnalysisReport() {
+  return startMarketAnalysisReport();
+}
+
+function startMarketAnalysisReport() {
   var request = mrBuildGitHubRequestPayload_();
   var requestPath = 'runtime/market-inputs/request_' + request.request_id + '.json';
   var outputPath = 'runtime/market-outputs/report_' + request.request_id + '.json';
@@ -34,9 +42,35 @@ function buildMarketAnalysisReport() {
   mrCreateGitHubFile_(requestPath, JSON.stringify(request, null, 2), 'Market analysis request ' + request.request_id);
   mrTriggerMarketWorkflow_(requestPath);
 
-  var report = mrPollGitHubReport_(outputPath, request.request_id, 300);
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty(MR_GH.lastRequestIdProp, request.request_id);
+  props.setProperty(MR_GH.lastRequestPathProp, requestPath);
+  props.setProperty(MR_GH.lastOutputPathProp, outputPath);
+
+  return 'Market Analysis started in GitHub Actions. Wait 2-5 minutes, then run fetchMarketAnalysisReport. Request: ' + request.request_id;
+}
+
+function fetchMarketAnalysisReport() {
+  var props = PropertiesService.getScriptProperties();
+  var requestId = props.getProperty(MR_GH.lastRequestIdProp);
+  var outputPath = props.getProperty(MR_GH.lastOutputPathProp);
+  if (!requestId || !outputPath) throw new Error('No saved market-analysis request found. Run startMarketAnalysisReport first.');
+
+  var content = mrReadGitHubFile_(outputPath);
+  var report = JSON.parse(content);
+  if (String(report.request_id || '') !== String(requestId)) {
+    throw new Error('Finished report found, but request_id does not match. Expected ' + requestId + ', got ' + report.request_id);
+  }
+
   mrWriteBackendReport_(report);
-  return 'GitHub Actions Python Market Analysis complete. Report written: ' + MR_GH.reportSheet;
+  return 'Finished report imported into ' + MR_GH.reportSheet + '. Request: ' + requestId;
+}
+
+function fetchLatestMarketAnalysisReport() {
+  var content = mrReadGitHubFile_('runtime/market-outputs/latest-market-report.json');
+  var report = JSON.parse(content);
+  mrWriteBackendReport_(report);
+  return 'Latest finished market report imported into ' + MR_GH.reportSheet + '. Request: ' + (report.request_id || 'latest');
 }
 
 function testMarketGitHubConnection() {
@@ -51,8 +85,9 @@ function checkMarketGitHubConfig() {
   var repo = props.getProperty(MR_GH.repoProp) || MR_GH.defaultRepo;
   var branch = props.getProperty(MR_GH.branchProp) || MR_GH.defaultBranch;
   var workflow = props.getProperty(MR_GH.workflowProp) || MR_GH.defaultWorkflow;
+  var last = props.getProperty(MR_GH.lastRequestIdProp) || 'none';
   if (!hasAccess) return 'Missing Script Property: GITHUB_MARKET_ACCESS';
-  return 'Config found. Repo: ' + repo + ' | Branch: ' + branch + ' | Workflow: ' + workflow + ' | Access value: saved';
+  return 'Config found. Repo: ' + repo + ' | Branch: ' + branch + ' | Workflow: ' + workflow + ' | Access value: saved | Last request: ' + last;
 }
 
 function setMarketGitHubConfig(accessValue, repoFullName, branch, workflowFile) {
@@ -99,23 +134,6 @@ function mrTriggerMarketWorkflow_(requestPath) {
   }, true);
 }
 
-function mrPollGitHubReport_(outputPath, requestId, maxSeconds) {
-  var started = new Date().getTime();
-  var lastErr = '';
-  while (((new Date().getTime() - started) / 1000) < maxSeconds) {
-    Utilities.sleep(5000);
-    try {
-      var content = mrReadGitHubFile_(outputPath);
-      var report = JSON.parse(content);
-      if (String(report.request_id || '') === String(requestId)) return report;
-      lastErr = 'Report exists but request_id did not match yet.';
-    } catch (err) {
-      lastErr = err.message || String(err);
-    }
-  }
-  throw new Error('GitHub Actions report was not ready after ' + maxSeconds + ' seconds. Open GitHub Actions to check the workflow. Last status: ' + lastErr);
-}
-
 function mrCreateGitHubFile_(path, content, message) {
   var cfg = mrGetGitHubCfg_();
   var endpoint = '/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.repo) + '/contents/' + path.split('/').map(encodeURIComponent).join('/');
@@ -128,7 +146,7 @@ function mrCreateGitHubFile_(path, content, message) {
 
 function mrReadGitHubFile_(path) {
   var cfg = mrGetGitHubCfg_();
-  var endpoint = '/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.repo) + '/contents/' + path.split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(cfg.branch);
+  var endpoint = '/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.repo) + '/contents/' + path.split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(cfg.branch) + '&cachebust=' + new Date().getTime();
   var data = mrGitHubApi_(endpoint, 'get');
   if (!data || !data.content) throw new Error('GitHub file had no content: ' + path);
   return Utilities.newBlob(Utilities.base64Decode(String(data.content).replace(/\s/g, ''))).getDataAsString('UTF-8');
