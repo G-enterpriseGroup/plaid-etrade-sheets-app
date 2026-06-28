@@ -1,8 +1,10 @@
 /**
  * Portfolio Link Market Analysis - Local GoogleFinance Engine
- * No GitHub Actions. No Python. No Yahoo/Stooq scraping.
- * Flow: Holdings tab -> hidden Market Data Cache tab using GOOGLEFINANCE -> technical calculations -> Report Market Analysis.
- * Version: local-googlefinance-v2-handcrafted-report
+ * Restored core engine with light report polish only:
+ * - source list moved to sidebar
+ * - Add / Trim / Hold language standardized
+ * - estimated trim P&L included in trim recommendations
+ * - compact 13-column formatting for cleaner portrait PDF fitting
  */
 
 var MR_LOCAL = {
@@ -16,17 +18,9 @@ var MR_LOCAL = {
 };
 
 var MR_SECTORS = [
-  ['XLC', 'Communication Services'],
-  ['XLY', 'Consumer Discretionary'],
-  ['XLP', 'Consumer Staples'],
-  ['XLE', 'Energy'],
-  ['XLF', 'Financials'],
-  ['XLV', 'Healthcare'],
-  ['XLI', 'Industrials'],
-  ['XLB', 'Materials'],
-  ['XLRE', 'Real Estate'],
-  ['XLK', 'Technology'],
-  ['XLU', 'Utilities']
+  ['XLC', 'Communication Services'], ['XLY', 'Consumer Discretionary'], ['XLP', 'Consumer Staples'],
+  ['XLE', 'Energy'], ['XLF', 'Financials'], ['XLV', 'Healthcare'], ['XLI', 'Industrials'],
+  ['XLB', 'Materials'], ['XLRE', 'Real Estate'], ['XLK', 'Technology'], ['XLU', 'Utilities']
 ];
 
 var MR_PROXIES = ['SPY','QQQ','DIA','IWM','GLD','USO','TLT','UUP','HYG','BIL'];
@@ -61,7 +55,7 @@ function buildMarketAnalysisReport() {
   var holdings = mrReadHoldings_(ss);
   if (!holdings.length) throw new Error('No usable ticker holdings found. Pull Holdings first, or make sure rows have ticker_symbol.');
 
-  var symbols = mrUnique_(MR_PROXIES.concat(MR_SECTORS.map(function(x){return x[0];})));
+  var symbols = mrUnique_(MR_PROXIES.concat(MR_SECTORS.map(function(x){ return x[0]; })));
   var histories = mrLoadGoogleFinanceHistories_(ss, symbols);
   var market = mrBuildMarketState_(symbols, histories);
   var quality = mrQualitySummary_(symbols, histories, market);
@@ -70,72 +64,43 @@ function buildMarketAnalysisReport() {
   var portfolioRows = mrBuildPortfolioRows_(holdings, market);
 
   var sh = ss.getSheetByName(MR_LOCAL.reportSheet) || ss.insertSheet(MR_LOCAL.reportSheet);
-  sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns()).breakApart();
-  sh.clear();
-  sh.setHiddenGridlines(true);
-  sh.getRange(1, 1, sh.getMaxRows(), Math.min(13, sh.getMaxColumns()))
-    .setFontFamily(MR_LOCAL.font)
-    .setFontSize(12)
-    .setWrap(true)
-    .setVerticalAlignment('top');
+  mrPrepareReportSheet_(sh);
 
   var row = 1;
   row = mrTitle_(sh, row, 'Raj Market Rotation Report', 'Built ' + mrNow_() + '. Local GoogleFinance technical engine. Cash, money market, and no-ticker rows excluded.');
-
   row = mrSection_(sh, row, 'Executive Read');
   row = mrParagraph_(sh, row, mrExecutiveRead_(market, portfolioRows));
-
   row = mrSection_(sh, row, 'Current Market Pressure Rating');
   row = mrTable_(sh, row, ['Pressure Area','Current Evidence','Severity','Portfolio Meaning'], mrPressureRows_(market));
-
   row = mrSection_(sh, row, 'Market Rotation Narrative');
   row = mrParagraph_(sh, row, mrRotationNarrative_(market));
-
   row = mrSection_(sh, row, 'Macro Risk Dashboard');
   row = mrTable_(sh, row, ['Risk Area','Current Read','Risk Level','Portfolio Meaning'], mrMacroRows_(market));
-
   row = mrSection_(sh, row, 'Sector Rotation - SPDR Map');
   row = mrTable_(sh, row, ['ETF','Sector','Rotation Read','Flow Pressure','Action Bias'], mrSectorRows_(market));
-
   row = mrSection_(sh, row, 'Technical Confirmation Snapshot');
   row = mrTable_(sh, row, ['ETF','Sector','Price vs 20 EMA','Price vs 50 SMA','Price vs 200 SMA','20/50 Crossover','50/200 Trend','MACD vs Signal','MACD Zero','RS vs SPY'], mrTechnicalRows_(market));
-
   row = mrSection_(sh, row, 'Recent News Catalysts');
   row = mrTable_(sh, row, ['Date','Headline / Catalyst','Severity','Why It Matters'], newsRows);
-
   row = mrSection_(sh, row, 'Upcoming Macro Catalysts to Watch');
   row = mrTable_(sh, row, ['Date','Time ET','Event','Impact','Days Until','Why It Matters'], mrMacroCatalystRows_(macroEvents));
-
   row = mrSection_(sh, row, 'Prior Week Recap + Forward Trend');
   row = mrParagraph_(sh, row, mrPriorWeekText_(market));
-
   row = mrSection_(sh, row, 'Raj Portfolio Impact - Exact Actions');
   row = mrTable_(sh, row, ['Ticker','Qty Held','Cost Basis','Current Value','Unrealized $','P&L %','Tolerance Status','Thesis','Exact Action','Action Qty','Est. $ Value','Reason / Price Source','Sleeve'], portfolioRows);
-
   row = mrSection_(sh, row, 'Total Suggested Trims and Primary Goal');
   row = mrTable_(sh, row, ['Metric','Value'], [
     ['Total suggested trims', mrMoney_(mrTotalAction_(portfolioRows, 'Trim-QTY'))],
-    ['Total suggested sells', mrMoney_(mrTotalAction_(portfolioRows, 'Sell-QTY'))],
+    ['Total estimated trim P&L', mrMoney_(mrTotalTrimPnl_(portfolioRows))],
     ['Total suggested adds', mrMoney_(mrTotalAction_(portfolioRows, 'Add-QTY'))],
     ['Primary goal', 'Keep actions small, reduce overlap, protect profit outliers, and add only when macro/sector thesis confirms technical trend.']
   ]);
-
   row = mrSection_(sh, row, 'Aggressive Growth Setup With Risk Controls');
   row = mrTable_(sh, row, ['Setup','Trigger','Risk Control','Action Bias'], [
     ['Core growth add','SPY/XLK above 20 EMA and 50 SMA with MACD > signal','Starter size only; do not add into weak macro','Add-QTY only when confirmed'],
     ['Profit protection','Large P&L outlier or overweight sleeve','Trim 5% to 15%, not full exit','Trim-QTY'],
     ['Safety redeployment','Safety sleeve overweight and growth leadership confirmed','Keep liquidity buffer','Gradual shift only'],
     ['Avoid weak trend','Below 20 EMA/50 SMA with MACD < signal','No averaging down without macro confirmation','Avoid or Hold']
-  ]);
-
-  row = mrSection_(sh, row, 'Chicago-Style Source List');
-  row = mrTable_(sh, row, ['Source','Use'], [
-    ['Google Sheets GOOGLEFINANCE','Daily price history for SPY, sectors, and market proxies.'],
-    ['Google News RSS','Recent market catalyst headlines when available.'],
-    ['Connected E*TRADE Holdings tab','Portfolio quantities, prices, values, weights, and P&L.'],
-    ['Macro event schedule logic','CPI, PPI, jobs, JOLTS, PCE, GDP, retail sales, ISM, and FOMC calendar items.'],
-    ['SPDR sector ETF map','11-sector rotation framework.'],
-    ['SPY benchmark','Relative-strength benchmark.']
   ]);
 
   mrFinalize_(sh, row);
@@ -157,7 +122,6 @@ function mrLoadGoogleFinanceHistories_(ss, symbols) {
   var neededCols = symbols.length * 4;
   if (sh.getMaxColumns() < neededCols) sh.insertColumnsAfter(sh.getMaxColumns(), neededCols - sh.getMaxColumns());
   if (sh.getMaxRows() < 720) sh.insertRowsAfter(sh.getMaxRows(), 720 - sh.getMaxRows());
-
   symbols.forEach(function(sym, i){
     var col = 1 + i * 4;
     sh.getRange(1, col).setValue(sym).setFontWeight('bold');
@@ -165,13 +129,12 @@ function mrLoadGoogleFinanceHistories_(ss, symbols) {
     sh.getRange(2, col).setFormula('=GOOGLEFINANCE("' + gf + '","close",TODAY()-' + MR_LOCAL.lookbackDays + ',TODAY(),"DAILY")');
   });
   SpreadsheetApp.flush();
-
   var histories = {};
   for (var wait = 0; wait < 12; wait++) {
     Utilities.sleep(wait === 0 ? 7000 : 3000);
     SpreadsheetApp.flush();
     histories = mrReadCacheHistories_(sh, symbols);
-    var okCount = symbols.filter(function(s){return histories[s] && histories[s].closes.length >= 60;}).length;
+    var okCount = symbols.filter(function(s){ return histories[s] && histories[s].closes.length >= 60; }).length;
     if (okCount >= Math.max(5, Math.floor(symbols.length * 0.85))) break;
   }
   try { sh.hideSheet(); } catch(e) {}
@@ -220,7 +183,7 @@ function mrTech_(sym, hist) {
 function mrBlankTech_(sym, reason) { return {ticker:sym, price:0, ema20:0, sma50:0, sma200:0, macd:0, signal:0, hist:0, rsi14:50, ret5d:0, ret20d:0, ret60d:0, vol20:0, drawdown63d:0, trendScore:0, momentumScore:0, riskScore:0, compositeScore:0, source:reason, rows:0, priceVs20:'n/a', priceVs50:'n/a', priceVs200:'n/a', cross20_50:'n/a', trend50_200:'n/a', macdSignal:'n/a', macdZero:'n/a', read:'Needs data'}; }
 function mrQualitySummary_(symbols, histories, market){ var ok=0, failed=[]; symbols.forEach(function(s){ if(market[s] && market[s].read!=='Needs data') ok++; else failed.push(s); }); return {ok:ok, total:symbols.length, failed:failed, note: failed.length ? 'Missing: ' + failed.join(', ') : 'All sector/proxy tickers loaded.'}; }
 
-function mrExecutiveRead_(m, rows){ var p=mrOverallPressure_(m), adds=mrCountAction_(rows,'Add-QTY'), trims=mrCountAction_(rows,'Trim-QTY'), sells=mrCountAction_(rows,'Sell-QTY'); return 'Current market pressure is rated ' + p.rating + ' because ' + p.reason + ' Portfolio action flags: ' + adds + ' add candidates, ' + trims + ' trim candidates, and ' + sells + ' sell/reduce candidates. The report is not an auto-trade instruction; it is a risk-managed review layer combining sector rotation, macro pressure, and your E*TRADE position data.'; }
+function mrExecutiveRead_(m, rows){ var p=mrOverallPressure_(m), adds=mrCountAction_(rows,'Add-QTY'), trims=mrCountAction_(rows,'Trim-QTY'); return 'Current market pressure is rated ' + p.rating + ' because ' + p.reason + ' Portfolio action flags: ' + adds + ' add candidates and ' + trims + ' trim/reduce candidates. The report is not an auto-trade instruction; it is a risk-managed review layer combining sector rotation, macro pressure, and your E*TRADE position data.'; }
 function mrOverallPressure_(m){ var score=0, reasons=[]; if(m.SPY.priceVs50==='Below'){score+=2; reasons.push('SPY is below its 50 SMA');} if(m.HYG.priceVs50==='Below'||m.HYG.ret20d<-0.03){score+=2; reasons.push('credit proxy HYG is weak');} if(m.TLT.ret20d<-0.04){score+=2; reasons.push('long bonds are falling, pointing to yield pressure');} if(m.USO.ret20d>0.06){score+=1; reasons.push('oil is rising');} if(m.UUP.ret20d>0.03){score+=1; reasons.push('the dollar is firming');} if(m.SPY.read==='Bullish confirmed') score-=1; var rating=score>=5?'HIGH':score>=3?'MEDIUM':score>=1?'WATCH':'LOW'; return {rating:rating, score:score, reason:reasons.length?reasons.join('; '):'SPY trend and credit conditions are not showing major stress'}; }
 function mrPressureRows_(m){ var p=mrOverallPressure_(m); return [
   ['Broad equity trend','SPY ' + m.SPY.priceVs50 + ' 50 SMA; SPY read: ' + m.SPY.read, p.rating, 'Controls how aggressive new equity adds should be.'],
@@ -237,7 +200,6 @@ function mrMacroRows_(m) { return [
   ['Inflation / Dollar','UUP 20d ' + mrPctText_(m.UUP.ret20d) + '; USO 20d ' + mrPctText_(m.USO.ret20d), m.UUP.ret20d>0.03||m.USO.ret20d>0.05?'Tighter impulse':'Contained','Affects ADRs, gold, and valuation multiples.'],
   ['Jobs / Growth','SPY technical read: ' + m.SPY.read, m.SPY.compositeScore>=0.58?'Growth trend constructive':'Growth trend mixed/weak','Confirms whether rotation supports risk assets.']
 ]; }
-
 function mrSectorRows_(m) { var spy=m.SPY; return MR_SECTORS.map(function(x){ var t=m[x[0]], rot=mrRotation_(t, spy); return [x[0], x[1], rot, mrFlow_(t, spy) + ' / ' + mrRS_(t, spy), mrBias_(rot)]; }); }
 function mrTechnicalRows_(m) { var spy=m.SPY; return MR_SECTORS.map(function(x){ var t=m[x[0]]; return [x[0], x[1], t.priceVs20, t.priceVs50, t.priceVs200, t.cross20_50, t.trend50_200, t.macdSignal, t.macdZero, mrRS_(t, spy)]; }); }
 function mrRotationNarrative_(m){ var spy=m.SPY, entering=[], exiting=[], mixed=[]; MR_SECTORS.forEach(function(x){ var t=m[x[0]], rot=mrRotation_(t, spy), rs=mrRS_(t, spy); var label=x[0]+' ('+x[1]+')'; if((rot==='Leadership'||rot==='Positive trend') && rs!=='Underperforming SPY') entering.push(label); else if(rot==='Lagging / weak'||rs==='Underperforming SPY') exiting.push(label); else mixed.push(label); }); return 'Based on the 11 SPDR sector ETFs, market rotation appears to be entering or favoring: ' + (entering.length?entering.join(', '):'no clear sector leadership') + '. It appears to be exiting, avoiding, or underweighting: ' + (exiting.length?exiting.join(', '):'no clear exit group') + '. Mixed/neutral areas: ' + (mixed.length?mixed.join(', '):'none') + '. This paragraph is built from price versus moving averages, MACD confirmation, and relative strength versus SPY.'; }
@@ -247,12 +209,14 @@ function mrRS_(t, spy){ if(t.read==='Needs data'||spy.read==='Needs data') retur
 function mrBias_(r){ if(r==='Leadership') return 'Best add/hold candidates after macro confirmation'; if(r==='Positive trend') return 'Hold / selective add only'; if(r==='Improving') return 'Watchlist / starter only'; if(r==='Lagging / weak') return 'Avoid adds / review trims'; return 'Data needed / wait'; }
 function mrPriorWeekText_(m){ var spy=m.SPY, leaders=[], lag=[]; MR_SECTORS.forEach(function(x){ var rot=mrRotation_(m[x[0]], spy); if(rot==='Leadership') leaders.push(x[0]+' '+x[1]); if(rot==='Lagging / weak') lag.push(x[0]+' '+x[1]); }); return 'Forward trend: SPY is ' + spy.read + ' with 20-day change of ' + mrPctText_(spy.ret20d) + '. Confirmed technical leadership: ' + (leaders.length?leaders.join(', '):'none') + '. Weak/lagging sectors: ' + (lag.length?lag.slice(0,4).join(', '):'none') + '. Use macro dates and news catalysts above before changing position sizes.'; }
 
-function mrBuildPortfolioRows_(holdings, market) { var weights={}; holdings.forEach(function(h){ var meta=mrMeta_(h); weights[meta[0]]=(weights[meta[0]]||0)+h.weight; }); return holdings.map(function(h){ var meta=mrMeta_(h), tech=market[meta[1]]||market.SPY, tol=mrTolerance_(h, meta, tech, weights), act=mrAction_(h, meta, tech, tol); return [h.ticker, h.qty, mrMoney_(h.cost), mrMoney_(h.value), mrMoney_(h.pnl), mrPctText_(h.pnlPct), tol, meta[2], act[0], act[1], mrMoney_(act[2]), act[3] + ' Sector proxy ' + meta[1] + ' = ' + tech.read + ' (' + tech.compositeScore.toFixed(2) + ').', meta[0]]; }).sort(function(a,b){ return mrActionPriority_(a[8]) - mrActionPriority_(b[8]) || mrNum_(b[3]) - mrNum_(a[3]); }); }
+function mrBuildPortfolioRows_(holdings, market) { var weights={}; holdings.forEach(function(h){ var meta=mrMeta_(h); weights[meta[0]]=(weights[meta[0]]||0)+h.weight; }); return holdings.map(function(h){ var meta=mrMeta_(h), tech=market[meta[1]]||market.SPY, tol=mrTolerance_(h, meta, tech, weights), act=mrAction_(h, meta, tech, tol); var trimPnl = mrEstimatedTrimPnl_(h, act); var reason = act[3] + (String(act[0]).indexOf('Trim-QTY')===0 ? ' Estimated P&L on this trim: ' + mrMoney_(trimPnl) + '. ' : ' ') + 'Sector proxy ' + meta[1] + ' = ' + tech.read + ' (' + tech.compositeScore.toFixed(2) + ').'; return [h.ticker, h.qty, mrMoney_(h.cost), mrMoney_(h.value), mrMoney_(h.pnl), mrPctText_(h.pnlPct), tol, meta[2], act[0], act[1], mrMoney_(act[2]), reason, meta[0]]; }).sort(function(a,b){ return mrActionPriority_(a[8]) - mrActionPriority_(b[8]) || mrNum_(b[3]) - mrNum_(a[3]); }); }
+function mrEstimatedTrimPnl_(h, act){ if(!act || String(act[0]).indexOf('Trim-QTY')!==0 || !h.qty) return 0; return (h.pnl / h.qty) * Number(act[1] || 0); }
 function mrMeta_(h){ if(MR_TICKER_MAP[h.ticker]) return MR_TICKER_MAP[h.ticker]; if(String(h.type).indexOf('etf')>=0) return ['ETF / Unmapped','SPY','ETF exposure; map sleeve manually if material.']; return ['Equity / Unmapped','SPY','Single-stock exposure; validate thesis manually.']; }
 function mrTolerance_(h, meta, t, weights){ var sleeve=meta[0], sw=weights[sleeve]||0, safety=sleeve.indexOf('Safety')>=0||sleeve.indexOf('Income')>=0||sleeve.indexOf('Credit')>=0; if(safety&&sw>0.45) return 'Overweight safety'; if(safety&&sw>0.18) return 'Safety overlap'; if(safety) return 'Income tilt'; if(h.pnlPct>0.50) return 'Profit outlier'; if(h.pnlPct<-0.10&&t.compositeScore<0.45) return 'Weak'; if(h.weight<0.015) return 'Too small'; if(h.weight>0.08||sw>0.18) return 'Near limit'; if(t.compositeScore<0.35&&t.read!=='Needs data') return 'Out of tolerance'; return 'In tolerance'; }
-function mrAction_(h, meta, t, tol){ var price=h.price||(h.value/h.qty)||0, qty=Math.max(0,Math.floor(h.qty)), safety=meta[0].indexOf('Safety')>=0||meta[0].indexOf('Income')>=0||meta[0].indexOf('Credit')>=0; if(qty<=0) return ['Hold',0,0,'No share quantity available. Price source: E*TRADE institution price/value.']; if(t.read==='Needs data') return ['Hold',0,0,'No market technical data yet. Price source: E*TRADE institution price/value.']; if(tol==='Profit outlier'&&t.compositeScore<0.65){var q=Math.max(1,Math.floor(qty*0.10)); return ['Trim-QTY '+q,q,q*price,'Profit outlier and mapped trend is not leadership. Estimate uses E*TRADE institution price/value.'];} if((tol==='Weak'||tol==='Out of tolerance')&&t.compositeScore<0.40&&!safety){var q2=Math.max(1,Math.floor(qty*0.15)); return ['Sell-QTY '+q2,q2,q2*price,'Weak mapped trend plus tolerance pressure. Estimate uses E*TRADE institution price/value.'];} if((tol==='Overweight safety'||tol==='Safety overlap')&&safety){var q3=Math.max(1,Math.floor(qty*0.05)); return ['Trim-QTY '+q3,q3,q3*price,'Safety sleeve overlap; trim only if reallocating to confirmed leadership. Estimate uses E*TRADE institution price/value.'];} if(tol==='Too small'&&t.compositeScore>=0.75&&!safety){var q4=price>=100?1:Math.max(1,Math.floor(500/Math.max(price,1))); return ['Add-QTY '+q4,q4,q4*price,'Small position with mapped technical leadership. Estimate uses E*TRADE institution price/value.'];} return ['Hold',0,0,'Hold-no-add until macro/news confirms. Price source: E*TRADE institution price/value.']; }
-function mrActionPriority_(s){ if(String(s).indexOf('Add-QTY')===0) return 1; if(String(s).indexOf('Trim-QTY')===0) return 2; if(String(s).indexOf('Sell-QTY')===0) return 3; if(String(s).indexOf('Avoid')===0) return 4; return 9; }
+function mrAction_(h, meta, t, tol){ var price=h.price||(h.value/h.qty)||0, qty=Math.max(0,Math.floor(h.qty)), safety=meta[0].indexOf('Safety')>=0||meta[0].indexOf('Income')>=0||meta[0].indexOf('Credit')>=0; if(qty<=0) return ['Hold',0,0,'No share quantity available. Price source: E*TRADE institution price/value.']; if(t.read==='Needs data') return ['Hold',0,0,'No market technical data yet. Price source: E*TRADE institution price/value.']; if(tol==='Profit outlier'&&t.compositeScore<0.65){var q=Math.max(1,Math.floor(qty*0.10)); return ['Trim-QTY '+q,q,q*price,'Profit outlier and mapped trend is not leadership. Estimate uses E*TRADE institution price/value.'];} if((tol==='Weak'||tol==='Out of tolerance')&&t.compositeScore<0.40&&!safety){var q2=Math.max(1,Math.floor(qty*0.15)); return ['Trim-QTY '+q2,q2,q2*price,'Weak mapped trend plus tolerance pressure. Estimate uses E*TRADE institution price/value.'];} if((tol==='Overweight safety'||tol==='Safety overlap')&&safety){var q3=Math.max(1,Math.floor(qty*0.05)); return ['Trim-QTY '+q3,q3,q3*price,'Safety sleeve overlap; trim only if reallocating to confirmed leadership. Estimate uses E*TRADE institution price/value.'];} if(tol==='Too small'&&t.compositeScore>=0.75&&!safety){var q4=price>=100?1:Math.max(1,Math.floor(500/Math.max(price,1))); return ['Add-QTY '+q4,q4,q4*price,'Small position with mapped technical leadership. Estimate uses E*TRADE institution price/value.'];} return ['Hold',0,0,'Hold-no-add until macro/news confirms. Price source: E*TRADE institution price/value.']; }
+function mrActionPriority_(s){ if(String(s).indexOf('Add-QTY')===0) return 1; if(String(s).indexOf('Trim-QTY')===0) return 2; if(String(s).indexOf('Avoid')===0) return 4; return 9; }
 function mrTotalAction_(rows, prefix){ return rows.reduce(function(sum,r){ return String(r[8]).indexOf(prefix)===0 ? sum + mrNum_(r[10]) : sum; },0); }
+function mrTotalTrimPnl_(rows){ return rows.reduce(function(sum,r){ if(String(r[8]).indexOf('Trim-QTY')!==0) return sum; var qty=mrNum_(r[9]); var totalQty=mrNum_(r[1]); var totalPnl=mrNum_(r[4]); return sum + (totalQty ? (totalPnl/totalQty)*qty : 0); },0); }
 function mrCountAction_(rows, prefix){ return rows.filter(function(r){return String(r[8]).indexOf(prefix)===0;}).length; }
 
 function mrBuildMacroEvents_(){ var events=[]; events=events.concat(mrBlsMacroEvents_()).concat(mrFomcEvents_()).concat(mrIsmEvents_()).concat(mrEstimatedMacroEvents_()); return mrNormalizeMacroEvents_(events); }
@@ -317,8 +281,22 @@ function mrNthBusinessDay_(y,m,n){ var d=new Date(y,m,1), c=0; while(d.getMonth(
 function mrNthWeekday_(y,m,weekday,n){ var d=new Date(y,m,1), c=0; while(d.getMonth()===m){ if(d.getDay()===weekday) c++; if(c===n) return mrStripTime_(d); d.setDate(d.getDate()+1); } return mrLastBusinessDay_(y,m); }
 function mrLastBusinessDay_(y,m){ var d=new Date(y,m+1,0); while(mrIsWeekend_(d)) d.setDate(d.getDate()-1); return mrStripTime_(d); }
 
-function mrTitle_(sh,row,title,sub){ sh.getRange(row,1,1,13).merge().setValue(title).setFontSize(20).setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle').setBackground('#111827').setFontColor('#ffffff'); sh.setRowHeight(row,38); row++; sh.getRange(row,1,1,13).merge().setValue(sub).setFontSize(12).setFontColor('#374151').setBackground('#eef2ff').setWrap(true); sh.setRowHeight(row,34); return row+2; }
-function mrSection_(sh,row,title){ sh.getRange(row,1,1,13).merge().setValue(title).setFontSize(15).setFontWeight('bold').setBackground('#dbeafe').setFontColor('#111827').setHorizontalAlignment('left').setVerticalAlignment('middle'); sh.setRowHeight(row,30); return row+1; }
-function mrParagraph_(sh,row,text){ sh.getRange(row,1,1,13).merge().setValue(text).setFontSize(12).setBackground('#ffffff').setWrap(true).setVerticalAlignment('middle').setHorizontalAlignment('left'); sh.setRowHeight(row,74); return row+2; }
-function mrTable_(sh,row,headers,rows){ rows=rows||[]; var width=Math.max(headers.length,1), data=[headers].concat(rows); var clean=data.map(function(r){var o=[]; for(var i=0;i<width;i++) o.push(r[i]===undefined||r[i]===null?'':r[i]); return o;}); var range=sh.getRange(row,1,clean.length,width); range.setValues(clean).setWrap(true).setVerticalAlignment('top').setBorder(true,true,true,true,true,true,'#cbd5e1',SpreadsheetApp.BorderStyle.SOLID); sh.getRange(row,1,1,width).setFontWeight('bold').setFontSize(11).setBackground('#1f2937').setFontColor('#ffffff').setHorizontalAlignment('center'); if(clean.length>1) sh.getRange(row+1,1,clean.length-1,width).setBackground('#ffffff').setFontColor('#111827').setFontSize(12).setHorizontalAlignment('left'); for(var r=0;r<clean.length;r++) sh.setRowHeight(row+r, r===0?28:46); return row+clean.length+2; }
-function mrFinalize_(sh,lastRow){ var widths=[140,155,130,130,130,105,160,320,150,95,130,380,180]; for(var c=1;c<=13;c++) sh.setColumnWidth(c,widths[c-1]); sh.getRange(1,1,Math.max(1,lastRow),Math.min(13,sh.getMaxColumns())).setFontFamily(MR_LOCAL.font); sh.autoResizeRows(1,Math.max(1,lastRow)); sh.setFrozenRows(0); }
+function mrPrepareReportSheet_(sh){
+  try { sh.showColumns(1, sh.getMaxColumns()); } catch(e) {}
+  sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns()).breakApart();
+  sh.clear();
+  sh.setHiddenGridlines(true);
+  if (sh.getMaxColumns() < 13) sh.insertColumnsAfter(sh.getMaxColumns(), 13 - sh.getMaxColumns());
+  sh.getRange(1, 1, sh.getMaxRows(), 13)
+    .setFontFamily(MR_LOCAL.font)
+    .setFontSize(10)
+    .setWrap(true)
+    .setVerticalAlignment('middle')
+    .setNumberFormat('@');
+}
+function mrTitle_(sh,row,title,sub){ sh.getRange(row,1,1,13).merge().setValue(title).setFontSize(18).setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle').setBackground('#111827').setFontColor('#ffffff'); sh.setRowHeight(row,36); row++; sh.getRange(row,1,1,13).merge().setValue(sub).setFontSize(10).setFontColor('#374151').setBackground('#eef2ff').setWrap(true).setVerticalAlignment('middle'); sh.setRowHeight(row,30); return row+2; }
+function mrSection_(sh,row,title){ sh.getRange(row,1,1,13).merge().setValue(title).setFontSize(13).setFontWeight('bold').setBackground('#dbeafe').setFontColor('#111827').setHorizontalAlignment('left').setVerticalAlignment('middle'); sh.setRowHeight(row,28); return row+1; }
+function mrParagraph_(sh,row,text){ sh.getRange(row,1,1,13).merge().setValue(text).setFontSize(10).setBackground('#ffffff').setWrap(true).setVerticalAlignment('middle').setHorizontalAlignment('left').setBorder(true,true,true,true,null,null,'#e5e7eb',SpreadsheetApp.BorderStyle.SOLID); sh.setRowHeight(row,58); return row+2; }
+function mrTable_(sh,row,headers,rows){ rows=rows||[]; var width=Math.max(headers.length,1), data=[headers].concat(rows); var clean=data.map(function(r){var o=[]; for(var i=0;i<width;i++) o.push(r[i]===undefined||r[i]===null?'':r[i]); return o;}); var range=sh.getRange(row,1,clean.length,width); range.setValues(clean).setWrap(true).setVerticalAlignment('middle').setBorder(true,true,true,true,true,true,'#cbd5e1',SpreadsheetApp.BorderStyle.SOLID); sh.getRange(row,1,1,width).setFontWeight('bold').setFontSize(9).setBackground('#1f2937').setFontColor('#ffffff').setHorizontalAlignment('center'); if(clean.length>1) sh.getRange(row+1,1,clean.length-1,width).setBackground('#ffffff').setFontColor('#111827').setFontSize(10).setHorizontalAlignment('left'); for(var r=0;r<clean.length;r++) sh.setRowHeight(row+r, r===0?26:mrDataRowHeight_(clean[r], width)); return row+clean.length+2; }
+function mrDataRowHeight_(r,width){ var len=String((r||[]).join(' ')).length; if(width>=10) return len>260?60:46; if(len>260) return 62; if(len>160) return 52; return 42; }
+function mrFinalize_(sh,lastRow){ var widths=[76,88,86,88,88,62,112,220,98,60,88,300,112]; for(var c=1;c<=13;c++) sh.setColumnWidth(c,widths[c-1]); sh.getRange(1,1,Math.max(1,lastRow),13).setFontFamily(MR_LOCAL.font).setNumberFormat('@').setWrap(true).setVerticalAlignment('middle'); if(sh.getMaxColumns()>13){ try { sh.hideColumns(14, sh.getMaxColumns()-13); } catch(e) {} } for(var r=1;r<=lastRow;r++){ if(sh.getRowHeight(r)>78) sh.setRowHeight(r,78); } sh.setFrozenRows(0); }
