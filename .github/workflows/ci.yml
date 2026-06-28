@@ -3,8 +3,14 @@ name: Repo Checks
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - 'runtime/market-inputs/**'
+      - 'runtime/market-outputs/**'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - 'runtime/market-inputs/**'
+      - 'runtime/market-outputs/**'
 
 jobs:
   validate:
