@@ -1,10 +1,10 @@
 /**
  * Portfolio Link Market Analysis - Local GoogleFinance Engine
- * Restored core engine with light report polish only:
+ * Restored core engine with report formatting polish only:
  * - source list moved to sidebar
  * - Add / Trim / Hold language standardized
  * - estimated trim P&L included in trim recommendations
- * - compact 13-column formatting for cleaner portrait PDF fitting
+ * - default row height 21, reasoning/bias/why rows 46
  */
 
 var MR_LOCAL = {
@@ -87,7 +87,7 @@ function buildMarketAnalysisReport() {
   row = mrSection_(sh, row, 'Prior Week Recap + Forward Trend');
   row = mrParagraph_(sh, row, mrPriorWeekText_(market));
   row = mrSection_(sh, row, 'Raj Portfolio Impact - Exact Actions');
-  row = mrTable_(sh, row, ['Ticker','Qty Held','Cost Basis','Current Value','Unrealized $','P&L %','Tolerance Status','Thesis','Exact Action','Action Qty','Est. $ Value','Reason / Price Source','Sleeve'], portfolioRows);
+  row = mrTable_(sh, row, ['Ticker','Qty Held','Cost Basis','Current Value','Unrealized $','P&L %','Tolerance Status','Thesis','Exact Action','Est. P&L','Est. $ Value','Reason / Price Source','Sleeve'], portfolioRows);
   row = mrSection_(sh, row, 'Total Suggested Trims and Primary Goal');
   row = mrTable_(sh, row, ['Metric','Value'], [
     ['Total suggested trims', mrMoney_(mrTotalAction_(portfolioRows, 'Trim-QTY'))],
@@ -209,14 +209,14 @@ function mrRS_(t, spy){ if(t.read==='Needs data'||spy.read==='Needs data') retur
 function mrBias_(r){ if(r==='Leadership') return 'Best add/hold candidates after macro confirmation'; if(r==='Positive trend') return 'Hold / selective add only'; if(r==='Improving') return 'Watchlist / starter only'; if(r==='Lagging / weak') return 'Avoid adds / review trims'; return 'Data needed / wait'; }
 function mrPriorWeekText_(m){ var spy=m.SPY, leaders=[], lag=[]; MR_SECTORS.forEach(function(x){ var rot=mrRotation_(m[x[0]], spy); if(rot==='Leadership') leaders.push(x[0]+' '+x[1]); if(rot==='Lagging / weak') lag.push(x[0]+' '+x[1]); }); return 'Forward trend: SPY is ' + spy.read + ' with 20-day change of ' + mrPctText_(spy.ret20d) + '. Confirmed technical leadership: ' + (leaders.length?leaders.join(', '):'none') + '. Weak/lagging sectors: ' + (lag.length?lag.slice(0,4).join(', '):'none') + '. Use macro dates and news catalysts above before changing position sizes.'; }
 
-function mrBuildPortfolioRows_(holdings, market) { var weights={}; holdings.forEach(function(h){ var meta=mrMeta_(h); weights[meta[0]]=(weights[meta[0]]||0)+h.weight; }); return holdings.map(function(h){ var meta=mrMeta_(h), tech=market[meta[1]]||market.SPY, tol=mrTolerance_(h, meta, tech, weights), act=mrAction_(h, meta, tech, tol); var trimPnl = mrEstimatedTrimPnl_(h, act); var reason = act[3] + (String(act[0]).indexOf('Trim-QTY')===0 ? ' Estimated P&L on this trim: ' + mrMoney_(trimPnl) + '. ' : ' ') + 'Sector proxy ' + meta[1] + ' = ' + tech.read + ' (' + tech.compositeScore.toFixed(2) + ').'; return [h.ticker, h.qty, mrMoney_(h.cost), mrMoney_(h.value), mrMoney_(h.pnl), mrPctText_(h.pnlPct), tol, meta[2], act[0], act[1], mrMoney_(act[2]), reason, meta[0]]; }).sort(function(a,b){ return mrActionPriority_(a[8]) - mrActionPriority_(b[8]) || mrNum_(b[3]) - mrNum_(a[3]); }); }
+function mrBuildPortfolioRows_(holdings, market) { var weights={}; holdings.forEach(function(h){ var meta=mrMeta_(h); weights[meta[0]]=(weights[meta[0]]||0)+h.weight; }); return holdings.map(function(h){ var meta=mrMeta_(h), tech=market[meta[1]]||market.SPY, tol=mrTolerance_(h, meta, tech, weights), act=mrAction_(h, meta, tech, tol); var trimPnl = mrEstimatedTrimPnl_(h, act); var reason = act[3] + (String(act[0]).indexOf('Trim-QTY')===0 ? ' Estimated P&L on this trim: ' + mrMoney_(trimPnl) + '. ' : ' ') + 'Sector proxy ' + meta[1] + ' = ' + tech.read + ' (' + tech.compositeScore.toFixed(2) + ').'; return [h.ticker, h.qty, mrMoney_(h.cost), mrMoney_(h.value), mrMoney_(h.pnl), mrPctText_(h.pnlPct), tol, meta[2], act[0], mrMoney_(trimPnl), mrMoney_(act[2]), reason, meta[0]]; }).sort(function(a,b){ return mrActionPriority_(a[8]) - mrActionPriority_(b[8]) || mrNum_(b[3]) - mrNum_(a[3]); }); }
 function mrEstimatedTrimPnl_(h, act){ if(!act || String(act[0]).indexOf('Trim-QTY')!==0 || !h.qty) return 0; return (h.pnl / h.qty) * Number(act[1] || 0); }
 function mrMeta_(h){ if(MR_TICKER_MAP[h.ticker]) return MR_TICKER_MAP[h.ticker]; if(String(h.type).indexOf('etf')>=0) return ['ETF / Unmapped','SPY','ETF exposure; map sleeve manually if material.']; return ['Equity / Unmapped','SPY','Single-stock exposure; validate thesis manually.']; }
 function mrTolerance_(h, meta, t, weights){ var sleeve=meta[0], sw=weights[sleeve]||0, safety=sleeve.indexOf('Safety')>=0||sleeve.indexOf('Income')>=0||sleeve.indexOf('Credit')>=0; if(safety&&sw>0.45) return 'Overweight safety'; if(safety&&sw>0.18) return 'Safety overlap'; if(safety) return 'Income tilt'; if(h.pnlPct>0.50) return 'Profit outlier'; if(h.pnlPct<-0.10&&t.compositeScore<0.45) return 'Weak'; if(h.weight<0.015) return 'Too small'; if(h.weight>0.08||sw>0.18) return 'Near limit'; if(t.compositeScore<0.35&&t.read!=='Needs data') return 'Out of tolerance'; return 'In tolerance'; }
 function mrAction_(h, meta, t, tol){ var price=h.price||(h.value/h.qty)||0, qty=Math.max(0,Math.floor(h.qty)), safety=meta[0].indexOf('Safety')>=0||meta[0].indexOf('Income')>=0||meta[0].indexOf('Credit')>=0; if(qty<=0) return ['Hold',0,0,'No share quantity available. Price source: E*TRADE institution price/value.']; if(t.read==='Needs data') return ['Hold',0,0,'No market technical data yet. Price source: E*TRADE institution price/value.']; if(tol==='Profit outlier'&&t.compositeScore<0.65){var q=Math.max(1,Math.floor(qty*0.10)); return ['Trim-QTY '+q,q,q*price,'Profit outlier and mapped trend is not leadership. Estimate uses E*TRADE institution price/value.'];} if((tol==='Weak'||tol==='Out of tolerance')&&t.compositeScore<0.40&&!safety){var q2=Math.max(1,Math.floor(qty*0.15)); return ['Trim-QTY '+q2,q2,q2*price,'Weak mapped trend plus tolerance pressure. Estimate uses E*TRADE institution price/value.'];} if((tol==='Overweight safety'||tol==='Safety overlap')&&safety){var q3=Math.max(1,Math.floor(qty*0.05)); return ['Trim-QTY '+q3,q3,q3*price,'Safety sleeve overlap; trim only if reallocating to confirmed leadership. Estimate uses E*TRADE institution price/value.'];} if(tol==='Too small'&&t.compositeScore>=0.75&&!safety){var q4=price>=100?1:Math.max(1,Math.floor(500/Math.max(price,1))); return ['Add-QTY '+q4,q4,q4*price,'Small position with mapped technical leadership. Estimate uses E*TRADE institution price/value.'];} return ['Hold',0,0,'Hold-no-add until macro/news confirms. Price source: E*TRADE institution price/value.']; }
 function mrActionPriority_(s){ if(String(s).indexOf('Add-QTY')===0) return 1; if(String(s).indexOf('Trim-QTY')===0) return 2; if(String(s).indexOf('Avoid')===0) return 4; return 9; }
 function mrTotalAction_(rows, prefix){ return rows.reduce(function(sum,r){ return String(r[8]).indexOf(prefix)===0 ? sum + mrNum_(r[10]) : sum; },0); }
-function mrTotalTrimPnl_(rows){ return rows.reduce(function(sum,r){ if(String(r[8]).indexOf('Trim-QTY')!==0) return sum; var qty=mrNum_(r[9]); var totalQty=mrNum_(r[1]); var totalPnl=mrNum_(r[4]); return sum + (totalQty ? (totalPnl/totalQty)*qty : 0); },0); }
+function mrTotalTrimPnl_(rows){ return rows.reduce(function(sum,r){ return String(r[8]).indexOf('Trim-QTY')===0 ? sum + mrNum_(r[9]) : sum; },0); }
 function mrCountAction_(rows, prefix){ return rows.filter(function(r){return String(r[8]).indexOf(prefix)===0;}).length; }
 
 function mrBuildMacroEvents_(){ var events=[]; events=events.concat(mrBlsMacroEvents_()).concat(mrFomcEvents_()).concat(mrIsmEvents_()).concat(mrEstimatedMacroEvents_()); return mrNormalizeMacroEvents_(events); }
@@ -294,9 +294,39 @@ function mrPrepareReportSheet_(sh){
     .setVerticalAlignment('middle')
     .setNumberFormat('@');
 }
-function mrTitle_(sh,row,title,sub){ sh.getRange(row,1,1,13).merge().setValue(title).setFontSize(18).setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle').setBackground('#111827').setFontColor('#ffffff'); sh.setRowHeight(row,36); row++; sh.getRange(row,1,1,13).merge().setValue(sub).setFontSize(10).setFontColor('#374151').setBackground('#eef2ff').setWrap(true).setVerticalAlignment('middle'); sh.setRowHeight(row,30); return row+2; }
-function mrSection_(sh,row,title){ sh.getRange(row,1,1,13).merge().setValue(title).setFontSize(13).setFontWeight('bold').setBackground('#dbeafe').setFontColor('#111827').setHorizontalAlignment('left').setVerticalAlignment('middle'); sh.setRowHeight(row,28); return row+1; }
-function mrParagraph_(sh,row,text){ sh.getRange(row,1,1,13).merge().setValue(text).setFontSize(10).setBackground('#ffffff').setWrap(true).setVerticalAlignment('middle').setHorizontalAlignment('left').setBorder(true,true,true,true,null,null,'#e5e7eb',SpreadsheetApp.BorderStyle.SOLID); sh.setRowHeight(row,58); return row+2; }
-function mrTable_(sh,row,headers,rows){ rows=rows||[]; var width=Math.max(headers.length,1), data=[headers].concat(rows); var clean=data.map(function(r){var o=[]; for(var i=0;i<width;i++) o.push(r[i]===undefined||r[i]===null?'':r[i]); return o;}); var range=sh.getRange(row,1,clean.length,width); range.setValues(clean).setWrap(true).setVerticalAlignment('middle').setBorder(true,true,true,true,true,true,'#cbd5e1',SpreadsheetApp.BorderStyle.SOLID); sh.getRange(row,1,1,width).setFontWeight('bold').setFontSize(9).setBackground('#1f2937').setFontColor('#ffffff').setHorizontalAlignment('center'); if(clean.length>1) sh.getRange(row+1,1,clean.length-1,width).setBackground('#ffffff').setFontColor('#111827').setFontSize(10).setHorizontalAlignment('left'); for(var r=0;r<clean.length;r++) sh.setRowHeight(row+r, r===0?26:mrDataRowHeight_(clean[r], width)); return row+clean.length+2; }
-function mrDataRowHeight_(r,width){ var len=String((r||[]).join(' ')).length; if(width>=10) return len>260?60:46; if(len>260) return 62; if(len>160) return 52; return 42; }
-function mrFinalize_(sh,lastRow){ var widths=[76,88,86,88,88,62,112,220,98,60,88,300,112]; for(var c=1;c<=13;c++) sh.setColumnWidth(c,widths[c-1]); sh.getRange(1,1,Math.max(1,lastRow),13).setFontFamily(MR_LOCAL.font).setNumberFormat('@').setWrap(true).setVerticalAlignment('middle'); if(sh.getMaxColumns()>13){ try { sh.hideColumns(14, sh.getMaxColumns()-13); } catch(e) {} } for(var r=1;r<=lastRow;r++){ if(sh.getRowHeight(r)>78) sh.setRowHeight(r,78); } sh.setFrozenRows(0); }
+function mrTitle_(sh,row,title,sub){ sh.getRange(row,1,1,13).merge().setValue(title).setFontSize(16).setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle').setBackground('#111827').setFontColor('#ffffff'); sh.setRowHeight(row,21); row++; sh.getRange(row,1,1,13).merge().setValue(sub).setFontSize(9).setFontColor('#374151').setBackground('#eef2ff').setWrap(true).setVerticalAlignment('middle'); sh.setRowHeight(row,21); return row+2; }
+function mrSection_(sh,row,title){ sh.getRange(row,1,1,13).merge().setValue(title).setFontSize(12).setFontWeight('bold').setBackground('#dbeafe').setFontColor('#111827').setHorizontalAlignment('left').setVerticalAlignment('middle'); sh.setRowHeight(row,21); return row+1; }
+function mrParagraph_(sh,row,text){ sh.getRange(row,1,1,13).merge().setValue(text).setFontSize(10).setBackground('#ffffff').setWrap(true).setVerticalAlignment('middle').setHorizontalAlignment('left').setBorder(true,true,true,true,null,null,'#e5e7eb',SpreadsheetApp.BorderStyle.SOLID); sh.setRowHeight(row,46); return row+2; }
+function mrTable_(sh,row,headers,rows){
+  rows=rows||[];
+  var spans=mrTableSpans_(headers);
+  var tall=mrTallTable_(headers);
+  var col=1;
+  for(var h=0;h<headers.length;h++){
+    var span=spans[h]||1;
+    sh.getRange(row,col,1,span).merge().setValue(headers[h]===undefined?'':headers[h])
+      .setFontWeight('bold').setFontSize(8).setBackground('#1f2937').setFontColor('#ffffff')
+      .setHorizontalAlignment('center').setVerticalAlignment('middle')
+      .setBorder(true,true,true,true,true,true,'#cbd5e1',SpreadsheetApp.BorderStyle.SOLID);
+    col+=span;
+  }
+  sh.setRowHeight(row,21);
+  row++;
+  rows.forEach(function(r){
+    col=1;
+    for(var c=0;c<headers.length;c++){
+      var span2=spans[c]||1;
+      sh.getRange(row,col,1,span2).merge().setValue(r[c]===undefined||r[c]===null?'':String(r[c]))
+        .setFontSize(9).setBackground('#ffffff').setFontColor('#111827')
+        .setWrap(true).setHorizontalAlignment('left').setVerticalAlignment('middle')
+        .setBorder(true,true,true,true,true,true,'#cbd5e1',SpreadsheetApp.BorderStyle.SOLID);
+      col+=span2;
+    }
+    sh.setRowHeight(row,tall?46:21);
+    row++;
+  });
+  return row+2;
+}
+function mrTableSpans_(headers){ var n=headers.length; if(n===2) return [3,10]; if(n===4) return [2,4,1,6]; if(n===5) return [1,3,3,2,4]; if(n===6) return [2,2,3,2,1,3]; if(n===10) return [1,2,1,1,1,2,2,1,1,1]; return headers.map(function(){return 1;}); }
+function mrTallTable_(headers){ var h=String((headers||[]).join(' ')).toLowerCase(); return h.indexOf('why it matters')>=0 || h.indexOf('bias')>=0 || h.indexOf('reason')>=0 || h.indexOf('thesis')>=0; }
+function mrFinalize_(sh,lastRow){ var widths=[44,52,66,66,66,52,78,118,82,74,78,148,88]; for(var c=1;c<=13;c++) sh.setColumnWidth(c,widths[c-1]); sh.getRange(1,1,Math.max(1,lastRow),13).setFontFamily(MR_LOCAL.font).setNumberFormat('@').setWrap(true).setVerticalAlignment('middle'); if(sh.getMaxColumns()>13){ try { sh.hideColumns(14, sh.getMaxColumns()-13); } catch(e) {} } for(var r=1;r<=lastRow;r++){ var h=sh.getRowHeight(r); if(h!==46) sh.setRowHeight(r,21); } sh.setFrozenRows(0); }
