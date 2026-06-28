@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: portfolio-link-market-backend
+    runtime: docker
+    rootDir: backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: BACKEND_API_TOKEN
+        generateValue: true
+      - key: MARKET_LOOKBACK
+        value: 2y
