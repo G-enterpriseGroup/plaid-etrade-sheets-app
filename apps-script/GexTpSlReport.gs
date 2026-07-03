@@ -32,16 +32,16 @@ function buildGexTakeProfitStopLimit() {
       Utilities.sleep(250);
     } catch (e) {
       errors.push(h.ticker + ': ' + e.message);
-      rows.push([h.ticker, h.qty, gexMoney_(h.price), 'n/a', 'n/a', 'n/a', 'n/a', 'n/a', 'n/a', 'Review manually', 'No usable Cboe GEX data: ' + e.message, gexNow_()]);
+      rows.push([h.ticker, h.qty, gexMoney_(h.cost), gexMoney_(h.price), 'n/a', 'n/a', 'n/a', 'n/a', 'n/a', 'n/a', 'n/a', 'n/a', 'Review manually', 'No usable Cboe GEX data: ' + e.message, gexNow_()]);
     }
   });
 
   var row = 1;
   row = gexTitle_(sh, row, 'GEX Take Profit & Stop Limit', 'Built ' + gexNow_() + '. Uses delayed Cboe option-chain data where available. GEX levels are estimates, not trade orders.');
   row = gexSection_(sh, row, 'How To Read This');
-  row = gexParagraph_(sh, row, 'Call Wall is the largest call-open-interest strike and is treated as the main upside magnet/resistance. Put Wall is the largest put-open-interest strike and is treated as downside support/risk. Gamma Flip is where cumulative estimated dealer GEX crosses zero; below it, downside moves can become less stable. Take Profit leans toward the call wall. Stop Limit leans toward the put wall or gamma flip below spot.');
+  row = gexParagraph_(sh, row, 'Call Wall is the largest call-open-interest strike and is treated as the main upside magnet/resistance. Put Wall is the largest put-open-interest strike and is treated as downside support/risk. Gamma Flip is where cumulative estimated dealer GEX crosses zero; below it, downside moves can become less stable. Take Profit leans toward the call wall. Stop Limit leans toward the put wall or gamma flip below spot. TP % and SL % are measured from current spot price.');
   row = gexSection_(sh, row, 'Portfolio GEX TP / SL Map');
-  row = gexTable_(sh, row, ['Ticker','Qty','Spot','Call Wall','Put Wall','Gamma Flip','Take Profit','Stop Limit','Dealer Regime','Bias','Reason','Updated'], rows);
+  row = gexTable_(sh, row, ['Ticker','Qty','Cost Basis','Spot','Call Wall','Put Wall','Gamma Flip','Take Profit','TP %','Stop Limit','SL %','Dealer Regime','Bias','Reason','Updated'], rows);
   if (errors.length) {
     row = gexSection_(sh, row, 'Data Issues');
     row = gexParagraph_(sh, row, errors.join('\n'));
@@ -57,13 +57,12 @@ function gexAnalyzeTicker_(ticker, fallbackSpot) {
   var options = chain.options || [];
   if (!options.length) throw new Error('empty option chain');
 
-  var today = new Date();
   var byStrike = {};
   var callOi = {}, putOi = {};
   options.forEach(function(o) {
     var parsed = gexParseOption_(o, ticker);
     if (!parsed || parsed.dte < 0 || parsed.dte > GEX_TPSL.maxDte || parsed.oi < GEX_TPSL.minOi) return;
-    var gamma = parsed.gamma || gexBsGamma_(spot, parsed.strike, parsed.dte, parsed.iv || 0.35, parsed.type);
+    var gamma = parsed.gamma || gexBsGamma_(spot, parsed.strike, parsed.dte, parsed.iv || 0.35);
     var gex = gamma * parsed.oi * 100 * spot * spot * 0.01;
     if (parsed.type === 'P') gex = -Math.abs(gex);
     else gex = Math.abs(gex);
@@ -89,12 +88,14 @@ function gexBuildOutputRow_(h, r) {
   var tp = r.callWall && r.callWall > spot ? r.callWall : gexNearestAbove_(spot, [r.callWall, r.gammaFlip]);
   var slCandidates = [r.putWall, r.gammaFlip].filter(function(x){ return x && x < spot; });
   var sl = slCandidates.length ? Math.max.apply(null, slCandidates) : r.putWall || r.gammaFlip || '';
+  var tpPct = tp && spot ? (tp / spot) - 1 : '';
+  var slPct = sl && spot ? (sl / spot) - 1 : '';
   var bias = 'Balanced';
   if (r.regime === 'Positive GEX' && r.callWall > spot && r.putWall < spot) bias = 'Range / harvest near wall';
   if (r.regime === 'Negative GEX') bias = 'Defensive / tighter stop';
   if (r.callWall && spot > r.callWall) bias = 'Above call wall / trail profit';
-  var reason = 'TP near call wall; SL near nearest downside GEX level. Net dealer regime: ' + r.regime + '. Source: ' + r.source + '.';
-  return [h.ticker, h.qty, gexMoney_(spot), gexPrice_(r.callWall), gexPrice_(r.putWall), gexPrice_(r.gammaFlip), gexPrice_(tp), gexPrice_(sl), r.regime, bias, reason, gexNow_()];
+  var reason = 'TP near call wall; SL near nearest downside GEX level. TP % / SL % are measured from spot. Net dealer regime: ' + r.regime + '. Source: ' + r.source + '.';
+  return [h.ticker, h.qty, gexMoney_(h.cost), gexMoney_(spot), gexPrice_(r.callWall), gexPrice_(r.putWall), gexPrice_(r.gammaFlip), gexPrice_(tp), gexPct_(tpPct), gexPrice_(sl), gexPct_(slPct), r.regime, bias, reason, gexNow_()];
 }
 
 function gexFetchCboeChain_(ticker) {
@@ -149,13 +150,13 @@ function gexBsGamma_(s, k, dte, iv) {
 }
 
 function gexGammaFlip_(strikes, byStrike, spot) {
-  var cum = 0, best = null, bestAbs = Infinity, prevCum = null, prevStrike = null;
+  var cum = 0, best = null, bestAbs = Infinity, prevCum = null;
   for (var i = 0; i < strikes.length; i++) {
     var k = strikes[i];
     cum += byStrike[String(k)] || 0;
     if (Math.abs(cum) < bestAbs) { bestAbs = Math.abs(cum); best = k; }
     if (prevCum !== null && ((prevCum <= 0 && cum >= 0) || (prevCum >= 0 && cum <= 0))) return k;
-    prevCum = cum; prevStrike = k;
+    prevCum = cum;
   }
   return best;
 }
@@ -169,8 +170,9 @@ function gexNearestAbove_(spot, arr){ var a=arr.filter(function(x){return x&&x>s
 function gexNormPdf_(x){ return Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI); }
 function gexDte_(exp){ var d = new Date(exp); if (isNaN(d.getTime())) return 9999; var today = new Date(); return Math.ceil((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000); }
 function gexNow_(){ return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'); }
-function gexMoney_(n){ return n ? '$' + Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : 'n/a'; }
+function gexMoney_(n){ return n || n === 0 ? '$' + Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : 'n/a'; }
 function gexPrice_(n){ return n ? Number(n).toFixed(2) : 'n/a'; }
+function gexPct_(n){ return n || n === 0 ? (Number(n) * 100).toFixed(2) + '%' : 'n/a'; }
 
 function gexReadHoldings_(ss) {
   var sh = ss.getSheetByName(GEX_TPSL.holdingsSheet);
@@ -182,13 +184,14 @@ function gexReadHoldings_(ss) {
   function col(names, fallback){ for(var i=0;i<names.length;i++){ if(ix[names[i]]!==undefined) return ix[names[i]]; } return fallback; }
   var cTicker = col(['ticker_symbol','ticker','symbol'], 6);
   var cQty = col(['quantity','qty','shares'], 10);
+  var cCost = col(['cost_basis','cost','basis'], 11);
   var cPrice = col(['institution_price','price','current_price'], 12);
   var out = [], seen = {};
   values.slice(1).forEach(function(r){
     var ticker = String(r[cTicker] || '').trim().toUpperCase();
     if (!ticker || seen[ticker] || gexExcludeTicker_(ticker)) return;
     seen[ticker] = true;
-    out.push({ticker: ticker, qty: gexNum_(r[cQty]), price: gexNum_(r[cPrice])});
+    out.push({ticker: ticker, qty: gexNum_(r[cQty]), cost: gexNum_(r[cCost]), price: gexNum_(r[cPrice])});
   });
   return out;
 }
@@ -201,11 +204,11 @@ function gexPrepareSheet_(sh){
   sh.getRange(1,1,sh.getMaxRows(),sh.getMaxColumns()).breakApart();
   sh.clear();
   sh.setHiddenGridlines(true);
-  if (sh.getMaxColumns() < 12) sh.insertColumnsAfter(sh.getMaxColumns(), 12 - sh.getMaxColumns());
-  sh.getRange(1,1,sh.getMaxRows(),12).setFontFamily(GEX_TPSL.font).setFontSize(10).setWrap(true).setVerticalAlignment('middle');
+  if (sh.getMaxColumns() < 15) sh.insertColumnsAfter(sh.getMaxColumns(), 15 - sh.getMaxColumns());
+  sh.getRange(1,1,sh.getMaxRows(),15).setFontFamily(GEX_TPSL.font).setFontSize(10).setWrap(true).setVerticalAlignment('middle');
 }
-function gexTitle_(sh,row,title,sub){ sh.getRange(row,1,1,12).merge().setValue(title).setFontSize(18).setFontWeight('bold').setBackground('#111827').setFontColor('#fff').setHorizontalAlignment('center'); sh.setRowHeight(row,34); row++; sh.getRange(row,1,1,12).merge().setValue(sub).setBackground('#eef2ff').setFontColor('#374151'); sh.setRowHeight(row,28); return row+2; }
-function gexSection_(sh,row,title){ sh.getRange(row,1,1,12).merge().setValue(title).setFontSize(13).setFontWeight('bold').setBackground('#dbeafe').setFontColor('#111827'); sh.setRowHeight(row,24); return row+1; }
-function gexParagraph_(sh,row,text){ sh.getRange(row,1,1,12).merge().setValue(text).setWrap(true).setBorder(true,true,true,true,null,null,'#e5e7eb',SpreadsheetApp.BorderStyle.SOLID); sh.setRowHeight(row,58); return row+2; }
+function gexTitle_(sh,row,title,sub){ sh.getRange(row,1,1,15).merge().setValue(title).setFontSize(18).setFontWeight('bold').setBackground('#111827').setFontColor('#fff').setHorizontalAlignment('center'); sh.setRowHeight(row,34); row++; sh.getRange(row,1,1,15).merge().setValue(sub).setBackground('#eef2ff').setFontColor('#374151'); sh.setRowHeight(row,28); return row+2; }
+function gexSection_(sh,row,title){ sh.getRange(row,1,1,15).merge().setValue(title).setFontSize(13).setFontWeight('bold').setBackground('#dbeafe').setFontColor('#111827'); sh.setRowHeight(row,24); return row+1; }
+function gexParagraph_(sh,row,text){ sh.getRange(row,1,1,15).merge().setValue(text).setWrap(true).setBorder(true,true,true,true,null,null,'#e5e7eb',SpreadsheetApp.BorderStyle.SOLID); sh.setRowHeight(row,58); return row+2; }
 function gexTable_(sh,row,headers,rows){ var data=[headers].concat(rows); var range=sh.getRange(row,1,data.length,headers.length); range.setValues(data).setWrap(true).setVerticalAlignment('middle').setBorder(true,true,true,true,true,true,'#cbd5e1',SpreadsheetApp.BorderStyle.SOLID); sh.getRange(row,1,1,headers.length).setFontWeight('bold').setFontSize(9).setBackground('#1f2937').setFontColor('#fff').setHorizontalAlignment('center'); for(var r=1;r<data.length;r++) sh.setRowHeight(row+r,42); sh.setRowHeight(row,26); return row+data.length+2; }
-function gexFinalize_(sh,lastRow){ var widths=[62,52,74,74,74,74,74,74,92,128,300,128]; for(var c=1;c<=12;c++) sh.setColumnWidth(c,widths[c-1]); if(sh.getMaxColumns()>12) sh.hideColumns(13, sh.getMaxColumns()-12); sh.setFrozenRows(0); }
+function gexFinalize_(sh,lastRow){ var widths=[62,52,84,74,74,74,74,74,62,74,62,92,128,280,128]; for(var c=1;c<=15;c++) sh.setColumnWidth(c,widths[c-1]); if(sh.getMaxColumns()>15) sh.hideColumns(16, sh.getMaxColumns()-15); sh.setFrozenRows(0); }
