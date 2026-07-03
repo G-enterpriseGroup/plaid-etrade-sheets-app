@@ -2,10 +2,7 @@
 
 Reads a holdings-style CSV/JSON list of tickers, pulls delayed Cboe option chains,
 estimates dealer gamma exposure, and returns Call Wall, Put Wall, Gamma Flip,
-Take Profit, and Stop Limit guide levels.
-
-This mirrors the Apps Script GexTpSlReport.gs logic so the Python backend has the
-same calculation path available later if we move the report off Google Apps Script.
+Take Profit, Stop Limit, cost basis, and TP/SL percent guide levels.
 """
 
 from __future__ import annotations
@@ -17,7 +14,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 
@@ -32,6 +29,7 @@ class Holding:
     ticker: str
     qty: float = 0.0
     price: float = 0.0
+    cost_basis: float = 0.0
 
 
 def norm_pdf(x: float) -> float:
@@ -72,7 +70,7 @@ def fetch_cboe_chain(ticker: str) -> Dict[str, Any]:
                 last_error = "no options in Cboe response"
                 continue
             return {"spot": float(spot or 0), "options": options, "source": "Cboe delayed quotes"}
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             last_error = str(exc)
     raise RuntimeError(last_error or "Cboe fetch failed")
 
@@ -106,9 +104,7 @@ def parse_option(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def max_oi_strike(oi_by_strike: Dict[float, float]) -> Optional[float]:
-    if not oi_by_strike:
-        return None
-    return max(oi_by_strike.items(), key=lambda kv: kv[1])[0]
+    return max(oi_by_strike.items(), key=lambda kv: kv[1])[0] if oi_by_strike else None
 
 
 def gamma_flip(gex_by_strike: Dict[float, float]) -> Optional[float]:
@@ -168,16 +164,32 @@ def analyze_ticker(holding: Holding) -> Dict[str, Any]:
     return {
         "ticker": holding.ticker,
         "qty": holding.qty,
+        "cost_basis": holding.cost_basis,
         "spot": spot,
         "call_wall": call_wall,
         "put_wall": put_wall,
         "gamma_flip": flip,
         "take_profit": tp,
+        "take_profit_pct_from_spot": (tp / spot - 1) if tp and spot else None,
         "stop_limit": sl,
+        "stop_limit_pct_from_spot": (sl / spot - 1) if sl and spot else None,
         "dealer_regime": regime,
         "net_gex": net_gex,
         "source": chain["source"],
     }
+
+
+def to_float(value: Any) -> float:
+    if value is None:
+        return 0.0
+    text = str(value)
+    neg = "(" in text and ")" in text
+    text = re.sub(r"[$,%\s()]", "", text)
+    try:
+        n = float(text)
+        return -n if neg else n
+    except ValueError:
+        return 0.0
 
 
 def read_holdings(path: Path) -> List[Holding]:
@@ -193,7 +205,14 @@ def read_holdings(path: Path) -> List[Holding]:
         if not ticker or ticker in seen or ticker in EXCLUDE or ticker.startswith("CUR:"):
             continue
         seen.add(ticker)
-        out.append(Holding(ticker=ticker, qty=float(r.get("quantity") or r.get("qty") or 0), price=float(r.get("institution_price") or r.get("price") or 0)))
+        out.append(
+            Holding(
+                ticker=ticker,
+                qty=to_float(r.get("quantity") or r.get("qty") or 0),
+                price=to_float(r.get("institution_price") or r.get("price") or 0),
+                cost_basis=to_float(r.get("cost_basis") or r.get("cost") or 0),
+            )
+        )
     return out
 
 
