@@ -1,8 +1,9 @@
 """GEX Take Profit / Stop Limit engine.
 
 Reads a holdings-style CSV/JSON list of tickers, pulls delayed Cboe option chains,
-estimates dealer gamma exposure, and returns Call Wall, Put Wall, Gamma Flip,
-Take Profit, Stop Limit, cost basis, and TP/SL percent guide levels.
+estimates dealer gamma exposure, and returns the simplified GEX TP/SL fields:
+ticker, qty, cost basis, spot, call wall, put wall, gamma flip, take profit,
+TP %, stop limit, and SL %.
 """
 
 from __future__ import annotations
@@ -156,8 +157,6 @@ def analyze_ticker(holding: Holding) -> Dict[str, Any]:
     call_wall = max_oi_strike(call_oi)
     put_wall = max_oi_strike(put_oi)
     flip = gamma_flip(gex_by_strike)
-    net_gex = sum(gex_by_strike.values())
-    regime = "Positive GEX" if net_gex >= 0 else "Negative GEX"
     tp = call_wall if call_wall and call_wall > spot else next((x for x in sorted([call_wall, flip]) if x and x > spot), None)
     stops = [x for x in [put_wall, flip] if x and x < spot]
     sl = max(stops) if stops else put_wall or flip
@@ -173,9 +172,6 @@ def analyze_ticker(holding: Holding) -> Dict[str, Any]:
         "take_profit_pct_from_spot": (tp / spot - 1) if tp and spot else None,
         "stop_limit": sl,
         "stop_limit_pct_from_spot": (sl / spot - 1) if sl and spot else None,
-        "dealer_regime": regime,
-        "net_gex": net_gex,
-        "source": chain["source"],
     }
 
 
