@@ -1,74 +1,54 @@
-var GEX_TPSL={holdingsSheet:'Holdings',reportSheet:'GEX Take Profit & Stop Limit',phoneSheet:'Phone-Gmail',font:'Times New Roman',maxTickers:40,maxDte:45,minOi:1,flipRangePct:.20,flipSteps:160,cboeBase:'https://cdn.cboe.com/api/global/delayed_quotes/options/'};
+var GEX_TPSL={holdingsSheet:'Holdings',reportSheet:'GEX Take Profit & Stop Limit',phoneSheet:'Phone-Gmail',font:'Times New Roman',defaultMaxDte:45,flipRangePct:.20,flipSteps:160,minOi:1,maxTickers:40,dteProp:'GEX_TPSL_MAX_DTE',cboeBase:'https://cdn.cboe.com/api/global/delayed_quotes/options/'};
 
-function buildGexTakeProfitStopLimit(){
+function getGexDteSettings(){var saved=gexGetSavedDte_();var opts=[7,14,21,30,45,60,90,120,180].map(function(d){return{value:String(d),label:'≤ '+d+' DTE / through '+gexDateAfterDays_(d)};});return{savedDte:String(saved),options:opts};}
+function saveGexDteSelection(dte){var d=gexCleanDte_(dte);PropertiesService.getDocumentProperties().setProperty(GEX_TPSL.dteProp,String(d));return'GEX DTE saved: ≤ '+d+' days / through '+gexDateAfterDays_(d);}
+function gexGetSavedDte_(){return gexCleanDte_(PropertiesService.getDocumentProperties().getProperty(GEX_TPSL.dteProp)||GEX_TPSL.defaultMaxDte);}
+function gexCleanDte_(dte){var d=Math.round(Number(dte||GEX_TPSL.defaultMaxDte));if(!d||d<1)d=GEX_TPSL.defaultMaxDte;if(d>365)d=365;return d;}
+function gexDateAfterDays_(d){var x=new Date();x.setDate(x.getDate()+Number(d||0));return Utilities.formatDate(x,Session.getScriptTimeZone(),'yyyy-MM-dd');}
+
+function buildGexTakeProfitStopLimit(selectedDte){
+  var maxDte=gexCleanDte_(selectedDte||gexGetSavedDte_());
+  PropertiesService.getDocumentProperties().setProperty(GEX_TPSL.dteProp,String(maxDte));
   var ss=SpreadsheetApp.getActiveSpreadsheet();
   var holdings=gexReadHoldings_(ss).slice(0,GEX_TPSL.maxTickers);
-  if(!holdings.length) throw new Error('No usable holdings tickers found. Pull Holdings first.');
+  if(!holdings.length)throw new Error('No usable holdings tickers found. Pull Holdings first.');
   var sh=ss.getSheetByName(GEX_TPSL.reportSheet)||ss.insertSheet(GEX_TPSL.reportSheet);
   gexPrepareSheet_(sh);
   var rows=[],errors=[];
-  holdings.forEach(function(h){try{var r=gexAnalyzeTicker_(h.ticker,h.price);rows.push(gexBuildOutputRow_(h,r));Utilities.sleep(250);}catch(e){errors.push(h.ticker+': '+e.message);rows.push([h.ticker,h.qty,gexMoney_(h.cost),gexMoney_(h.costPerShare),h.price||0,'n/a','n/a','n/a','n/a','','n/a','','']);}});
-  rows=rows.filter(gexRowHasUsableGex_);
-  rows.sort(gexSortByTpPctDesc_);
+  holdings.forEach(function(h){try{var r=gexAnalyzeTicker_(h.ticker,h.price,maxDte);rows.push(gexBuildOutputRow_(h,r));Utilities.sleep(250);}catch(e){errors.push(h.ticker+': '+e.message);rows.push([h.ticker,h.qty,gexMoney_(h.cost),gexMoney_(h.costPerShare),h.price||0,'n/a','n/a','n/a','n/a','','n/a','','']);}});
+  rows=rows.filter(gexRowHasUsableGex_).sort(gexSortByTpPctDesc_);
   var row=1;
-  row=gexTitle_(sh,row,'GEX Take Profit & Stop Limit','Built '+gexNow_()+'. Call/Put walls now use max GEX by strike. Gamma Flip uses simulated zero-gamma across spot range.');
+  row=gexTitle_(sh,row,'GEX Take Profit & Stop Limit','Built '+gexNow_()+'. DTE used: ≤ '+maxDte+' days / through '+gexDateAfterDays_(maxDte)+'. Call/Put walls use max GEX by strike. Gamma Flip uses simulated zero-gamma.');
   row=gexSection_(sh,row,'How To Read This');
-  row=gexParagraph_(sh,row,'Call Wall = strike with the largest positive call gamma exposure. Put Wall = strike with the largest negative put gamma exposure. Gamma Flip = simulated spot level where total net GEX crosses zero after recalculating gamma across a ±20% spot range. GEX per option = Gamma x Open Interest x 100 x Spot^2 x 0.01. Calls are positive and puts are negative as a dealer-positioning proxy. TP % = Take Profit / Cost Per Share - 1. SL % = Stop Limit / Cost Per Share - 1. EST. Loss = (Stop Limit - Cost Per Share) x Qty.');
+  row=gexParagraph_(sh,row,'Selected DTE means the engine includes listed options expiring in '+maxDte+' calendar days or less. Call Wall = strike with largest positive call gamma exposure. Put Wall = strike with largest negative put gamma exposure. Gamma Flip = simulated spot level where total net GEX crosses zero after recalculating gamma across a ±20% spot range. GEX = Gamma x Open Interest x 100 x Spot^2 x 0.01. Calls are positive and puts are negative as a dealer-positioning proxy.');
   row=gexSection_(sh,row,'Portfolio GEX TP / SL Map');
   row=gexTable_(sh,row,['Ticker','Qty','Cost Basis','Cost / Share','Live Spot','Call Wall','Put Wall','Gamma Flip','Take Profit','TP %','Stop Limit','SL %','EST. Loss'],rows);
   if(errors.length){row=gexSection_(sh,row,'Hidden / Data Issues');row=gexParagraph_(sh,row,errors.join('\n'));}
   gexFinalize_(sh,row);
-  gexBuildPhoneGmailTab_(ss,rows);
-  return 'GEX TP & SL complete. Main rows shown: '+rows.length+'. Logic updated: GEX walls + simulated gamma flip.'+(errors.length?' Hidden/issues: '+errors.length+'.':'');
+  gexBuildPhoneGmailTab_(ss,rows,maxDte);
+  return'GEX TP & SL complete. DTE: ≤ '+maxDte+' days. Main rows shown: '+rows.length+'. Phone-Gmail updated.'+(errors.length?' Hidden/issues: '+errors.length+'.':'');
 }
 function buildPhoneGmailGexReport(){return buildGexTakeProfitStopLimit();}
 function buildGexTakeProfitStopLimitAndPhoneGmail(){return buildGexTakeProfitStopLimit();}
 
-function gexAnalyzeTicker_(ticker,fallbackSpot){
-  var chain=gexFetchCboeChain_(ticker),spot=Number(chain.spot||fallbackSpot||0);
-  if(!spot)throw new Error('missing spot price');
+function gexAnalyzeTicker_(ticker,fallbackSpot,maxDte){
+  var chain=gexFetchCboeChain_(ticker),spot=Number(chain.spot||fallbackSpot||0);if(!spot)throw new Error('missing spot price');
   var options=chain.options||[];if(!options.length)throw new Error('empty option chain');
-  var rows=[],callGexByStrike={},putGexByStrike={},netGexByStrike={};
-  options.forEach(function(o){
-    var p=gexParseOption_(o,ticker);if(!p||p.dte<0||p.dte>GEX_TPSL.maxDte||p.oi<GEX_TPSL.minOi)return;
-    var gamma=p.gamma||gexBsGamma_(spot,p.strike,p.dte,p.iv||0.35);
-    var gex=gamma*p.oi*100*spot*spot*.01;
-    if(p.type==='P')gex=-Math.abs(gex);else gex=Math.abs(gex);
-    var k=String(p.strike);rows.push(p);
-    netGexByStrike[k]=(netGexByStrike[k]||0)+gex;
-    if(p.type==='C')callGexByStrike[k]=(callGexByStrike[k]||0)+gex;
-    if(p.type==='P')putGexByStrike[k]=(putGexByStrike[k]||0)+gex;
-  });
-  if(!rows.length)throw new Error('no option rows inside '+GEX_TPSL.maxDte+' DTE');
-  var callWall=gexMaxPositiveGexStrike_(callGexByStrike);
-  var putWall=gexMaxNegativeGexStrike_(putGexByStrike);
-  var gammaFlip=gexSimulatedGammaFlip_(rows,spot);
-  return{spot:spot,callWall:callWall,putWall:putWall,gammaFlip:gammaFlip,source:chain.source};
+  var rows=[],callGexByStrike={},putGexByStrike={};
+  options.forEach(function(o){var p=gexParseOption_(o,ticker);if(!p||p.dte<0||p.dte>maxDte||p.oi<GEX_TPSL.minOi)return;var gamma=p.gamma||gexBsGamma_(spot,p.strike,p.dte,p.iv||.35);var gx=gamma*p.oi*100*spot*spot*.01;if(p.type==='P')gx=-Math.abs(gx);else gx=Math.abs(gx);var k=String(p.strike);rows.push(p);if(p.type==='C')callGexByStrike[k]=(callGexByStrike[k]||0)+gx;if(p.type==='P')putGexByStrike[k]=(putGexByStrike[k]||0)+gx;});
+  if(!rows.length)throw new Error('no option rows inside '+maxDte+' DTE');
+  return{spot:spot,callWall:gexMaxPositiveGexStrike_(callGexByStrike),putWall:gexMaxNegativeGexStrike_(putGexByStrike),gammaFlip:gexSimulatedGammaFlip_(rows,spot),source:chain.source};
 }
 function gexBuildOutputRow_(h,r){var spot=r.spot||h.price||0;var tp=r.callWall&&r.callWall>spot?r.callWall:gexNearestAbove_(spot,[r.callWall,r.gammaFlip]);var slc=[r.putWall,r.gammaFlip].filter(function(x){return x&&x<spot;});var sl=slc.length?Math.max.apply(null,slc):(r.putWall||r.gammaFlip||'');return[h.ticker,h.qty,gexMoney_(h.cost),gexMoney_(h.costPerShare),spot,gexPrice_(r.callWall),gexPrice_(r.putWall),gexPrice_(r.gammaFlip),gexPrice_(tp),'',gexPrice_(sl),'',''];}
 function gexRowHasUsableGex_(r){return gexNum_(r[5])||gexNum_(r[6])||gexNum_(r[7])||gexNum_(r[8])||gexNum_(r[10]);}
 function gexSortByTpPctDesc_(a,b){return gexTpPctSortValue_(b)-gexTpPctSortValue_(a);}
 function gexTpPctSortValue_(row){var cost=gexNum_(row[3]),tp=gexNum_(row[8]);return(!cost||!tp)?-999999:(tp/cost)-1;}
-
 function gexMaxPositiveGexStrike_(map){var best='',bestVal=-Infinity;Object.keys(map||{}).forEach(function(k){var v=Number(map[k]||0);if(v>bestVal){bestVal=v;best=Number(k);}});return bestVal>0?best:'';}
 function gexMaxNegativeGexStrike_(map){var best='',bestVal=Infinity;Object.keys(map||{}).forEach(function(k){var v=Number(map[k]||0);if(v<bestVal){bestVal=v;best=Number(k);}});return bestVal<0?best:'';}
-function gexSimulatedGammaFlip_(rows,spot){
-  var lo=spot*(1-GEX_TPSL.flipRangePct),hi=spot*(1+GEX_TPSL.flipRangePct),steps=GEX_TPSL.flipSteps;
-  var prevS=lo,prev=gexNetGexAtSpot_(rows,lo),bestS=lo,bestAbs=Math.abs(prev);
-  for(var i=1;i<=steps;i++){
-    var s=lo+(hi-lo)*i/steps,net=gexNetGexAtSpot_(rows,s),abs=Math.abs(net);
-    if(abs<bestAbs){bestAbs=abs;bestS=s;}
-    if((prev<=0&&net>=0)||(prev>=0&&net<=0)){
-      var denom=Math.abs(prev)+Math.abs(net);return denom?prevS+(s-prevS)*(Math.abs(prev)/denom):s;
-    }
-    prev=net;prevS=s;
-  }
-  return bestS;
-}
-function gexNetGexAtSpot_(rows,s){var total=0;rows.forEach(function(p){var gamma=gexBsGamma_(s,p.strike,p.dte,p.iv||0.35),g=gamma*p.oi*100*s*s*.01;total+=p.type==='P'?-Math.abs(g):Math.abs(g);});return total;}
-
+function gexSimulatedGammaFlip_(rows,spot){var lo=spot*(1-GEX_TPSL.flipRangePct),hi=spot*(1+GEX_TPSL.flipRangePct),steps=GEX_TPSL.flipSteps,prevS=lo,prev=gexNetGexAtSpot_(rows,lo),bestS=lo,bestAbs=Math.abs(prev);for(var i=1;i<=steps;i++){var s=lo+(hi-lo)*i/steps,net=gexNetGexAtSpot_(rows,s),abs=Math.abs(net);if(abs<bestAbs){bestAbs=abs;bestS=s;}if((prev<=0&&net>=0)||(prev>=0&&net<=0)){var denom=Math.abs(prev)+Math.abs(net);return denom?prevS+(s-prevS)*(Math.abs(prev)/denom):s;}prev=net;prevS=s;}return bestS;}
+function gexNetGexAtSpot_(rows,s){var total=0;rows.forEach(function(p){var gamma=gexBsGamma_(s,p.strike,p.dte,p.iv||.35),g=gamma*p.oi*100*s*s*.01;total+=p.type==='P'?-Math.abs(g):Math.abs(g);});return total;}
 function gexFetchCboeChain_(ticker){var sym=String(ticker||'').trim().toUpperCase().replace(/[^A-Z0-9.]/g,''),tries=[sym,sym.replace('.','-')],lastErr='';for(var i=0;i<tries.length;i++){try{var url=GEX_TPSL.cboeBase+encodeURIComponent(tries[i])+'.json';var res=UrlFetchApp.fetch(url,{muteHttpExceptions:true,followRedirects:true,headers:{'User-Agent':'Mozilla/5.0'}});if(res.getResponseCode()!==200){lastErr='Cboe HTTP '+res.getResponseCode();continue;}var data=JSON.parse(res.getContentText());var options=data.options||(data.data&&data.data.options)||[];var current=data.current_price||data.currentPrice||(data.data&&(data.data.current_price||data.data.currentPrice));if(!options.length){lastErr='no options in Cboe response';continue;}return{spot:Number(current||0),options:options,source:'Cboe delayed quotes'};}catch(e){lastErr=e.message;}}throw new Error(lastErr||'Cboe fetch failed');}
-function gexParseOption_(o,ticker){var option=String(o.option||o.option_symbol||o.symbol||'').toUpperCase(),type=String(o.option_type||o.type||'').toUpperCase().charAt(0),strike=Number(o.strike||o.strike_price||0),exp=o.expiration_date||o.expiration||o.expiry||'';if((!type||!strike||!exp)&&option){var m=option.match(/(\d{6})([CP])(\d{8})$/);if(m){type=m[2];strike=Number(m[3])/1000;exp='20'+m[1].slice(0,2)+'-'+m[1].slice(2,4)+'-'+m[1].slice(4,6);}}if(type!=='C'&&type!=='P')return null;if(!strike)return null;var dte=gexDte_(exp),oi=Number(o.open_interest||o.openInterest||o.oi||0),gamma=Number(o.gamma||(o.greeks&&o.greeks.gamma)||0),iv=Number(o.iv||o.implied_volatility||(o.greeks&&o.greeks.iv)||0);if(iv>3)iv=iv/100;if(!iv)iv=.35;return{type:type,strike:strike,dte:dte,oi:oi,gamma:gamma,iv:iv};}
+function gexParseOption_(o,ticker){var option=String(o.option||o.option_symbol||o.symbol||'').toUpperCase(),type=String(o.option_type||o.type||'').toUpperCase().charAt(0),strike=Number(o.strike||o.strike_price||0),exp=o.expiration_date||o.expiration||o.expiry||'';if((!type||!strike||!exp)&&option){var m=option.match(/(\d{6})([CP])(\d{8})$/);if(m){type=m[2];strike=Number(m[3])/1000;exp='20'+m[1].slice(0,2)+'-'+m[1].slice(2,4)+'-'+m[1].slice(4,6);}}if(type!=='C'&&type!=='P')return null;if(!strike)return null;var dte=gexDte_(exp),oi=Number(o.open_interest||o.openInterest||o.oi||0),gamma=Number(o.gamma||(o.greeks&&o.greeks.gamma)||0),iv=Number(o.iv||o.implied_volatility||(o.greeks&&o.greeks.iv)||0);if(iv>3)iv=iv/100;if(!iv)iv=.35;return{type:type,strike:strike,dte:dte,oi:oi,gamma:gamma,iv:iv,exp:exp};}
 function gexBsGamma_(s,k,dte,iv){if(!s||!k||!dte)return 0;var t=Math.max(dte/365,1/365),v=Math.max(Number(iv||.35),.05),d1=(Math.log(s/k)+(.5*v*v)*t)/(v*Math.sqrt(t));return gexNormPdf_(d1)/(s*v*Math.sqrt(t));}
 function gexNormPdf_(x){return Math.exp(-.5*x*x)/Math.sqrt(2*Math.PI);}
 function gexDte_(exp){var d=new Date(exp);if(isNaN(d.getTime()))return 9999;var today=new Date();return Math.ceil((new Date(d.getFullYear(),d.getMonth(),d.getDate())-new Date(today.getFullYear(),today.getMonth(),today.getDate()))/86400000);}
@@ -81,7 +61,6 @@ function gexExcludeTicker_(t){return t.indexOf('CUR:')===0||['VMFXX','SWVXX','SP
 function gexNorm_(x){return String(x||'').trim().toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'');}
 function gexNum_(x){if(typeof x==='number')return x;var s=String(x||''),neg=s.indexOf('(')>=0;s=s.replace(/[,$%\s()]/g,'');var n=Number(s);return isNaN(n)?0:(neg?-n:n);}
 function gexGoogleFinanceFormula_(ticker,fallback){var t=String(ticker||'').replace(/"/g,''),fb=Number(fallback||0);return '=IFERROR(GOOGLEFINANCE("'+t+'","price"),'+fb+')';}
-
 function gexPrepareSheet_(sh){try{sh.showColumns(1,sh.getMaxColumns());}catch(e){}sh.getRange(1,1,sh.getMaxRows(),sh.getMaxColumns()).breakApart();sh.clear();sh.setHiddenGridlines(true);if(sh.getMaxColumns()<13)sh.insertColumnsAfter(sh.getMaxColumns(),13-sh.getMaxColumns());sh.getRange(1,1,sh.getMaxRows(),13).setFontFamily(GEX_TPSL.font).setFontSize(10).setWrap(true).setVerticalAlignment('middle');}
 function gexTitle_(sh,row,title,sub){sh.getRange(row,1,1,13).merge().setValue(title).setFontSize(18).setFontWeight('bold').setBackground('#111827').setFontColor('#fff').setHorizontalAlignment('center');sh.setRowHeight(row,34);row++;sh.getRange(row,1,1,13).merge().setValue(sub).setBackground('#eef2ff').setFontColor('#374151');sh.setRowHeight(row,28);return row+2;}
 function gexSection_(sh,row,title){sh.getRange(row,1,1,13).merge().setValue(title).setFontSize(13).setFontWeight('bold').setBackground('#dbeafe').setFontColor('#111827');sh.setRowHeight(row,24);return row+1;}
@@ -90,11 +69,10 @@ function gexTable_(sh,row,headers,rows){var data=[headers].concat(rows),range=sh
 function gexColorNumberColumn_(sh,startRow,col,numRows){if(numRows<=0)return;var vals=sh.getRange(startRow,col,numRows,1).getDisplayValues();for(var i=0;i<vals.length;i++){var n=gexNum_(vals[i][0]);if(n>0)sh.getRange(startRow+i,col).setBackground('#dcfce7');if(n<0)sh.getRange(startRow+i,col).setBackground('#fee2e2');}}
 function gexHideNaColumns_(sh,rows){[6,7,8,9,10,11,12,13].forEach(function(col){var sourceCol=col;if(col===10)sourceCol=9;if(col===12||col===13)sourceCol=11;var hasUsable=rows.some(function(r){var v=String(r[sourceCol-1]===undefined||r[sourceCol-1]===null?'':r[sourceCol-1]).trim().toLowerCase();return v!==''&&v!=='n/a'&&v!=='na'&&v!=='#n/a';});if(!hasUsable){try{sh.hideColumns(col);}catch(e){}}});}
 function gexFinalize_(sh,lastRow){var widths=[62,52,86,86,84,78,78,78,84,64,84,64,86];for(var c=1;c<=13;c++)sh.setColumnWidth(c,widths[c-1]);if(sh.getMaxColumns()>13)sh.hideColumns(14,sh.getMaxColumns()-13);sh.setFrozenRows(0);}
-
-function gexBuildPhoneGmailTab_(ss,rows){var sh=ss.getSheetByName(GEX_TPSL.phoneSheet)||ss.insertSheet(GEX_TPSL.phoneSheet);gexPhonePrepare_(sh);var r=1;r=gexPhoneTitle_(sh,r,'GEX TP / SL','Phone-Gmail printable one-page view • '+gexNow_());r=gexPhoneSummary_(sh,r,rows.length);r=gexPhoneTotals_(sh,r,rows);r=gexPhoneTable_(sh,r,rows);gexPhoneFinalize_(sh,r);}
+function gexBuildPhoneGmailTab_(ss,rows,maxDte){var sh=ss.getSheetByName(GEX_TPSL.phoneSheet)||ss.insertSheet(GEX_TPSL.phoneSheet);gexPhonePrepare_(sh);var r=1;r=gexPhoneTitle_(sh,r,'GEX TP / SL','Phone-Gmail view • DTE ≤ '+maxDte+' / through '+gexDateAfterDays_(maxDte)+' • '+gexNow_());r=gexPhoneSummary_(sh,r,rows.length);r=gexPhoneTotals_(sh,r,rows);r=gexPhoneTable_(sh,r,rows);gexPhoneFinalize_(sh,r);}
 function gexPhonePrepare_(sh){try{sh.showColumns(1,sh.getMaxColumns());}catch(e){}sh.getRange(1,1,sh.getMaxRows(),sh.getMaxColumns()).breakApart();sh.clear();sh.setHiddenGridlines(true);if(sh.getMaxColumns()<9)sh.insertColumnsAfter(sh.getMaxColumns(),9-sh.getMaxColumns());sh.getRange(1,1,sh.getMaxRows(),9).setFontFamily(GEX_TPSL.font).setFontSize(10).setWrap(true).setVerticalAlignment('middle');}
 function gexPhoneTitle_(sh,row,title,sub){sh.getRange(row,1,1,9).merge().setValue(title).setFontSize(19).setFontWeight('bold').setFontColor('#ffffff').setBackground('#111827').setHorizontalAlignment('center');sh.setRowHeight(row,34);row++;sh.getRange(row,1,1,9).merge().setValue(sub).setFontSize(9).setFontColor('#e5e7eb').setBackground('#374151').setHorizontalAlignment('center');sh.setRowHeight(row,22);return row+1;}
-function gexPhoneSummary_(sh,row,count){sh.getRange(row,1,1,9).merge().setValue('iPhone/Gmail one-page table: TP and SL side-by-side, TP % and SL % side-by-side, plus EST. Loss. % and loss use cost/share. Rows: '+count).setFontSize(9).setFontColor('#111827').setBackground('#fef3c7').setHorizontalAlignment('center');sh.setRowHeight(row,34);return row+1;}
+function gexPhoneSummary_(sh,row,count){sh.getRange(row,1,1,9).merge().setValue('iPhone/Gmail one-page table. TP/SL are side-by-side. % and loss use cost/share. Rows: '+count).setFontSize(9).setFontColor('#111827').setBackground('#fef3c7').setHorizontalAlignment('center');sh.setRowHeight(row,34);return row+1;}
 function gexPhoneTotals_(sh,row,rows){var pos=0,neg=0;rows.forEach(function(x){var n=gexEstLossNumber_(x[10],x[3],x[1]);if(n>0)pos+=n;if(n<0)neg+=n;});sh.getRange(row,1,1,4).merge().setValue('Positive Total EST. Loss\n'+gexMoney_(pos)).setBackground('#dcfce7').setFontWeight('bold').setHorizontalAlignment('center');sh.getRange(row,5,1,5).merge().setValue('Negative Total EST. Loss\n'+gexMoney_(neg)).setBackground('#fee2e2').setFontWeight('bold').setHorizontalAlignment('center');sh.setRowHeight(row,38);return row+1;}
 function gexPhoneTable_(sh,row,rows){var out=[['Ticker','Qty','Cost/Shr','Spot','TP','TP %','SL','SL %','EST. Loss']];rows.forEach(function(x){out.push([x[0],x[1],x[3],x[4],x[8],gexPctFromCost_(x[8],x[3]),x[10],gexPctFromCost_(x[10],x[3]),gexEstLoss_(x[10],x[3],x[1])]);});var rg=sh.getRange(row,1,out.length,9);rg.setValues(out).setWrap(true).setVerticalAlignment('middle').setBorder(true,true,true,true,true,true,'#cbd5e1',SpreadsheetApp.BorderStyle.SOLID);sh.getRange(row,1,1,9).setFontWeight('bold').setBackground('#1f2937').setFontColor('#ffffff').setHorizontalAlignment('center').setFontSize(9);for(var i=1;i<out.length;i++){var rr=row+i,loss=gexEstLossNumber_(rows[i-1][10],rows[i-1][3],rows[i-1][1]);sh.getRange(rr,5,1,2).setBackground('#dcfce7').setFontWeight('bold');sh.getRange(rr,7,1,2).setBackground('#fee2e2').setFontWeight('bold');sh.getRange(rr,9).setBackground(loss>=0?'#dcfce7':'#fee2e2').setFontWeight('bold');sh.setRowHeight(rr,25);}return row+out.length+1;}
 function gexPctFromCost_(level,cost){var l=gexNum_(level),c=gexNum_(cost);return(!l||!c)?'n/a':((l/c)-1).toLocaleString('en-US',{style:'percent',minimumFractionDigits:2,maximumFractionDigits:2});}
