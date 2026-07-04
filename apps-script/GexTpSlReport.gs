@@ -7,17 +7,18 @@ function buildGexTakeProfitStopLimit(){
   var sh=ss.getSheetByName(GEX_TPSL.reportSheet)||ss.insertSheet(GEX_TPSL.reportSheet);
   gexPrepareSheet_(sh);
   var rows=[],errors=[];
-  holdings.forEach(function(h){try{var r=gexAnalyzeTicker_(h.ticker,h.price);rows.push(gexBuildOutputRow_(h,r));Utilities.sleep(250);}catch(e){errors.push(h.ticker+': '+e.message);rows.push([h.ticker,h.qty,gexMoney_(h.cost),h.price||0,'n/a','n/a','n/a','n/a','','n/a','']);}});
+  holdings.forEach(function(h){try{var r=gexAnalyzeTicker_(h.ticker,h.price);rows.push(gexBuildOutputRow_(h,r));Utilities.sleep(250);}catch(e){errors.push(h.ticker+': '+e.message);rows.push([h.ticker,h.qty,gexMoney_(h.cost),gexMoney_(h.costPerShare),h.price||0,'n/a','n/a','n/a','n/a','','n/a','']);}});
+  rows=rows.filter(gexRowHasUsableGex_);
   rows.sort(gexSortByTpPctDesc_);
   var row=1;
-  row=gexTitle_(sh,row,'GEX Take Profit & Stop Limit','Built '+gexNow_()+'. Spot uses live GOOGLEFINANCE formulas. GEX levels use delayed Cboe option-chain data where available.');
+  row=gexTitle_(sh,row,'GEX Take Profit & Stop Limit','Built '+gexNow_()+'. Spot uses live GOOGLEFINANCE formulas. TP % and SL % use cost per share from Holdings cost basis divided by quantity.');
   row=gexSection_(sh,row,'How To Read This');
-  row=gexParagraph_(sh,row,'Call Wall is the largest call-open-interest strike and is treated as the main upside magnet/resistance. Put Wall is the largest put-open-interest strike and is treated as downside support/risk. Gamma Flip is where cumulative estimated dealer GEX crosses zero. TP % and SL % are live formulas from GOOGLEFINANCE spot. Rows sort highest TP % to lowest. Columns that are completely n/a are hidden.');
+  row=gexParagraph_(sh,row,'Call Wall is the largest call-open-interest strike and is treated as upside resistance/magnet. Put Wall is the largest put-open-interest strike and is treated as downside support/risk. Gamma Flip is where cumulative estimated dealer GEX crosses zero. TP % = Take Profit / Cost Per Share - 1. SL % = Stop Limit / Cost Per Share - 1. Rows with no usable GEX levels are hidden. Rows sort highest TP % to lowest.');
   row=gexSection_(sh,row,'Portfolio GEX TP / SL Map');
-  row=gexTable_(sh,row,['Ticker','Qty','Cost Basis','Live Spot','Call Wall','Put Wall','Gamma Flip','Take Profit','TP %','Stop Limit','SL %'],rows);
-  if(errors.length){row=gexSection_(sh,row,'Data Issues');row=gexParagraph_(sh,row,errors.join('\n'));}
+  row=gexTable_(sh,row,['Ticker','Qty','Cost Basis','Cost / Share','Live Spot','Call Wall','Put Wall','Gamma Flip','Take Profit','TP %','Stop Limit','SL %'],rows);
+  if(errors.length){row=gexSection_(sh,row,'Hidden / Data Issues');row=gexParagraph_(sh,row,errors.join('\n'));}
   gexFinalize_(sh,row);
-  return 'GEX TP & SL complete. Rows: '+rows.length+(errors.length?'. Issues: '+errors.length+'.':'.')+' Sorted by TP % high to low. Empty n/a columns hidden.';
+  return 'GEX TP & SL complete. Rows shown: '+rows.length+(errors.length?'. Hidden/issues: '+errors.length+'.':'.')+' TP % and SL % are based on cost per share, not spot.';
 }
 
 function gexAnalyzeTicker_(ticker,fallbackSpot){
@@ -35,10 +36,11 @@ function gexBuildOutputRow_(h,r){
   var tp=r.callWall&&r.callWall>spot?r.callWall:gexNearestAbove_(spot,[r.callWall,r.gammaFlip]);
   var slc=[r.putWall,r.gammaFlip].filter(function(x){return x&&x<spot;});
   var sl=slc.length?Math.max.apply(null,slc):(r.putWall||r.gammaFlip||'');
-  return [h.ticker,h.qty,gexMoney_(h.cost),spot,gexPrice_(r.callWall),gexPrice_(r.putWall),gexPrice_(r.gammaFlip),gexPrice_(tp),'',gexPrice_(sl),''];
+  return [h.ticker,h.qty,gexMoney_(h.cost),gexMoney_(h.costPerShare),spot,gexPrice_(r.callWall),gexPrice_(r.putWall),gexPrice_(r.gammaFlip),gexPrice_(tp),'',gexPrice_(sl),''];
 }
+function gexRowHasUsableGex_(r){return gexNum_(r[5])||gexNum_(r[6])||gexNum_(r[7])||gexNum_(r[8])||gexNum_(r[10]);}
 function gexSortByTpPctDesc_(a,b){return gexTpPctSortValue_(b)-gexTpPctSortValue_(a);}
-function gexTpPctSortValue_(row){var spot=gexNum_(row[3]),tp=gexNum_(row[7]);return (!spot||!tp)?-999999:(tp/spot)-1;}
+function gexTpPctSortValue_(row){var cost=gexNum_(row[3]),tp=gexNum_(row[8]);return (!cost||!tp)?-999999:(tp/cost)-1;}
 
 function gexFetchCboeChain_(ticker){
   var sym=String(ticker||'').trim().toUpperCase().replace(/[^A-Z0-9.]/g,''),tries=[sym,sym.replace('.','-')],lastErr='';
@@ -63,17 +65,17 @@ function gexReadHoldings_(ss){
   var sh=ss.getSheetByName(GEX_TPSL.holdingsSheet); if(!sh)throw new Error('Missing Holdings tab.'); var values=sh.getDataRange().getDisplayValues(); if(values.length<2)return [];
   var headers=values[0].map(gexNorm_),ix={};headers.forEach(function(h,i){ix[h]=i;}); function col(names,fallback){for(var i=0;i<names.length;i++){if(ix[names[i]]!==undefined)return ix[names[i]];}return fallback;}
   var cTicker=col(['ticker_symbol','ticker','symbol'],6),cQty=col(['quantity','qty','shares'],10),cCost=col(['cost_basis','cost','basis'],11),cPrice=col(['institution_price','price','current_price'],12),out=[],seen={};
-  values.slice(1).forEach(function(r){var ticker=String(r[cTicker]||'').trim().toUpperCase(); if(!ticker||seen[ticker]||gexExcludeTicker_(ticker))return; seen[ticker]=true; out.push({ticker:ticker,qty:gexNum_(r[cQty]),cost:gexNum_(r[cCost]),price:gexNum_(r[cPrice])});});
+  values.slice(1).forEach(function(r){var ticker=String(r[cTicker]||'').trim().toUpperCase(); if(!ticker||seen[ticker]||gexExcludeTicker_(ticker))return; var qty=gexNum_(r[cQty]),cost=gexNum_(r[cCost]); seen[ticker]=true; out.push({ticker:ticker,qty:qty,cost:cost,costPerShare:qty?cost/qty:0,price:gexNum_(r[cPrice])});});
   return out;
 }
 function gexExcludeTicker_(t){return t.indexOf('CUR:')===0||['VMFXX','SWVXX','SPAXX','FDRXX'].indexOf(t)>=0;}
 function gexNorm_(x){return String(x||'').trim().toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'');}
 function gexNum_(x){if(typeof x==='number')return x;var s=String(x||''),neg=s.indexOf('(')>=0;s=s.replace(/[,$%\s()]/g,'');var n=Number(s);return isNaN(n)?0:(neg?-n:n);}
 function gexGoogleFinanceFormula_(ticker,fallback){var t=String(ticker||'').replace(/"/g,''),fb=Number(fallback||0);return '=IFERROR(GOOGLEFINANCE("'+t+'","price"),'+fb+')';}
-function gexPrepareSheet_(sh){try{sh.showColumns(1,sh.getMaxColumns());}catch(e){} sh.getRange(1,1,sh.getMaxRows(),sh.getMaxColumns()).breakApart(); sh.clear(); sh.setHiddenGridlines(true); if(sh.getMaxColumns()<11)sh.insertColumnsAfter(sh.getMaxColumns(),11-sh.getMaxColumns()); sh.getRange(1,1,sh.getMaxRows(),11).setFontFamily(GEX_TPSL.font).setFontSize(10).setWrap(true).setVerticalAlignment('middle');}
-function gexTitle_(sh,row,title,sub){sh.getRange(row,1,1,11).merge().setValue(title).setFontSize(18).setFontWeight('bold').setBackground('#111827').setFontColor('#fff').setHorizontalAlignment('center');sh.setRowHeight(row,34);row++;sh.getRange(row,1,1,11).merge().setValue(sub).setBackground('#eef2ff').setFontColor('#374151');sh.setRowHeight(row,28);return row+2;}
-function gexSection_(sh,row,title){sh.getRange(row,1,1,11).merge().setValue(title).setFontSize(13).setFontWeight('bold').setBackground('#dbeafe').setFontColor('#111827');sh.setRowHeight(row,24);return row+1;}
-function gexParagraph_(sh,row,text){sh.getRange(row,1,1,11).merge().setValue(text).setWrap(true).setBorder(true,true,true,true,null,null,'#e5e7eb',SpreadsheetApp.BorderStyle.SOLID);sh.setRowHeight(row,58);return row+2;}
-function gexTable_(sh,row,headers,rows){var data=[headers].concat(rows),range=sh.getRange(row,1,data.length,headers.length);range.setValues(data).setWrap(true).setVerticalAlignment('middle').setBorder(true,true,true,true,true,true,'#cbd5e1',SpreadsheetApp.BorderStyle.SOLID);sh.getRange(row,1,1,headers.length).setFontWeight('bold').setFontSize(9).setBackground('#1f2937').setFontColor('#fff').setHorizontalAlignment('center');for(var r=1;r<data.length;r++){var rr=row+r,ticker=String(rows[r-1][0]||''),fallbackSpot=gexNum_(rows[r-1][3]);sh.getRange(rr,4).setFormula(gexGoogleFinanceFormula_(ticker,fallbackSpot)).setNumberFormat('$#,##0.00');sh.getRange(rr,9).setFormula('=IFERROR(H'+rr+'/D'+rr+'-1,"")').setNumberFormat('0.00%');sh.getRange(rr,11).setFormula('=IFERROR(J'+rr+'/D'+rr+'-1,"")').setNumberFormat('0.00%');sh.setRowHeight(rr,28);}gexHideNaColumns_(sh,rows);sh.setRowHeight(row,26);return row+data.length+2;}
-function gexHideNaColumns_(sh,rows){[5,6,7,8,9,10,11].forEach(function(col){var sourceCol=col;if(col===9)sourceCol=8;if(col===11)sourceCol=10;var hasUsable=rows.some(function(r){var v=String(r[sourceCol-1]===undefined||r[sourceCol-1]===null?'':r[sourceCol-1]).trim().toLowerCase();return v!==''&&v!=='n/a'&&v!=='na'&&v!=='#n/a';});if(!hasUsable){try{sh.hideColumns(col);}catch(e){}}});}
-function gexFinalize_(sh,lastRow){var widths=[62,52,86,84,78,78,78,84,64,84,64];for(var c=1;c<=11;c++)sh.setColumnWidth(c,widths[c-1]);if(sh.getMaxColumns()>11)sh.hideColumns(12,sh.getMaxColumns()-11);sh.setFrozenRows(0);}
+function gexPrepareSheet_(sh){try{sh.showColumns(1,sh.getMaxColumns());}catch(e){} sh.getRange(1,1,sh.getMaxRows(),sh.getMaxColumns()).breakApart(); sh.clear(); sh.setHiddenGridlines(true); if(sh.getMaxColumns()<12)sh.insertColumnsAfter(sh.getMaxColumns(),12-sh.getMaxColumns()); sh.getRange(1,1,sh.getMaxRows(),12).setFontFamily(GEX_TPSL.font).setFontSize(10).setWrap(true).setVerticalAlignment('middle');}
+function gexTitle_(sh,row,title,sub){sh.getRange(row,1,1,12).merge().setValue(title).setFontSize(18).setFontWeight('bold').setBackground('#111827').setFontColor('#fff').setHorizontalAlignment('center');sh.setRowHeight(row,34);row++;sh.getRange(row,1,1,12).merge().setValue(sub).setBackground('#eef2ff').setFontColor('#374151');sh.setRowHeight(row,28);return row+2;}
+function gexSection_(sh,row,title){sh.getRange(row,1,1,12).merge().setValue(title).setFontSize(13).setFontWeight('bold').setBackground('#dbeafe').setFontColor('#111827');sh.setRowHeight(row,24);return row+1;}
+function gexParagraph_(sh,row,text){sh.getRange(row,1,1,12).merge().setValue(text).setWrap(true).setBorder(true,true,true,true,null,null,'#e5e7eb',SpreadsheetApp.BorderStyle.SOLID);sh.setRowHeight(row,58);return row+2;}
+function gexTable_(sh,row,headers,rows){var data=[headers].concat(rows),range=sh.getRange(row,1,data.length,headers.length);range.setValues(data).setWrap(true).setVerticalAlignment('middle').setBorder(true,true,true,true,true,true,'#cbd5e1',SpreadsheetApp.BorderStyle.SOLID);sh.getRange(row,1,1,headers.length).setFontWeight('bold').setFontSize(9).setBackground('#1f2937').setFontColor('#fff').setHorizontalAlignment('center');for(var r=1;r<data.length;r++){var rr=row+r,ticker=String(rows[r-1][0]||''),fallbackSpot=gexNum_(rows[r-1][4]);sh.getRange(rr,5).setFormula(gexGoogleFinanceFormula_(ticker,fallbackSpot)).setNumberFormat('$#,##0.00');sh.getRange(rr,10).setFormula('=IFERROR(I'+rr+'/D'+rr+'-1,"")').setNumberFormat('0.00%');sh.getRange(rr,12).setFormula('=IFERROR(K'+rr+'/D'+rr+'-1,"")').setNumberFormat('0.00%');sh.setRowHeight(rr,28);}gexHideNaColumns_(sh,rows);sh.setRowHeight(row,26);return row+data.length+2;}
+function gexHideNaColumns_(sh,rows){[6,7,8,9,10,11,12].forEach(function(col){var sourceCol=col;if(col===10)sourceCol=9;if(col===12)sourceCol=11;var hasUsable=rows.some(function(r){var v=String(r[sourceCol-1]===undefined||r[sourceCol-1]===null?'':r[sourceCol-1]).trim().toLowerCase();return v!==''&&v!=='n/a'&&v!=='na'&&v!=='#n/a';});if(!hasUsable){try{sh.hideColumns(col);}catch(e){}}});}
+function gexFinalize_(sh,lastRow){var widths=[62,52,86,86,84,78,78,78,84,64,84,64];for(var c=1;c<=12;c++)sh.setColumnWidth(c,widths[c-1]);if(sh.getMaxColumns()>12)sh.hideColumns(13,sh.getMaxColumns()-12);sh.setFrozenRows(0);}
