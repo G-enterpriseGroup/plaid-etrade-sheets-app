@@ -1,7 +1,8 @@
 /**
  * Portfolio Link - Phone-Gmail email sender
- * Separate Apps Script file for emailing the Phone-Gmail tab exactly from cells A:I.
- * It preserves merged cells, colors, font weights, alignments, borders, and row/column sizing in HTML.
+ * Separate Apps Script file for emailing the Phone-Gmail tab from visible A:I columns.
+ * Qty column B is hidden in the sheet and excluded from the email.
+ * Preserves merged cells, colors, font weights, alignments, borders, row heights, column widths, and HYPERLINK URLs.
  */
 
 var PHONE_GMAIL_EMAIL = {
@@ -18,7 +19,7 @@ function sendPhoneGmailReportEmail() {
   var html = phoneGmailBuildExactHtml_(sh);
   var subject = PHONE_GMAIL_EMAIL.subjectPrefix + ' - ' + phoneGmailNow_();
   GmailApp.sendEmail(PHONE_GMAIL_EMAIL.recipient, subject, 'Open this email in HTML view to see the formatted Phone-Gmail report.', {htmlBody: html});
-  return 'Phone-Gmail report emailed to ' + PHONE_GMAIL_EMAIL.recipient + '.';
+  return 'Phone-Gmail report emailed to ' + PHONE_GMAIL_EMAIL.recipient + '. Hidden Qty column excluded.';
 }
 
 function createDailyPhoneGmailEmailTrigger() {
@@ -37,9 +38,18 @@ function deleteDailyPhoneGmailEmailTriggers() {
 function phoneGmailBuildExactHtml_(sh) {
   SpreadsheetApp.flush();
   var lastRow = sh.getLastRow();
-  var cols = 9;
-  var range = sh.getRange(1, 1, lastRow, cols);
+  var maxCol = 9;
+  var visibleCols = [];
+  for (var c = 1; c <= maxCol; c++) {
+    var hidden = false;
+    try { hidden = sh.isColumnHiddenByUser(c); } catch(e) { hidden = c === 2; }
+    if (!hidden) visibleCols.push(c);
+  }
+  if (!visibleCols.length) visibleCols = [1,3,4,5,6,7,8,9];
+
+  var range = sh.getRange(1, 1, lastRow, maxCol);
   var values = range.getDisplayValues();
+  var rich = range.getRichTextValues();
   var bgs = range.getBackgrounds();
   var colors = range.getFontColors();
   var weights = range.getFontWeights();
@@ -51,16 +61,19 @@ function phoneGmailBuildExactHtml_(sh) {
   var spans = {};
 
   range.getMergedRanges().forEach(function(m) {
-    var r0 = m.getRow();
-    var c0 = m.getColumn();
-    var rs = m.getNumRows();
-    var cs = m.getNumColumns();
-    if (r0 < 1 || c0 < 1 || r0 > lastRow || c0 > cols) return;
-    spans[r0 + ':' + c0] = {rowspan: rs, colspan: Math.min(cs, cols - c0 + 1)};
+    var r0 = m.getRow(), c0 = m.getColumn(), rs = m.getNumRows(), cs = m.getNumColumns();
+    if (r0 < 1 || c0 < 1 || r0 > lastRow || c0 > maxCol) return;
+    var visibleInMerge = [];
+    for (var cc = c0; cc < c0 + cs && cc <= maxCol; cc++) {
+      if (visibleCols.indexOf(cc) >= 0) visibleInMerge.push(cc);
+    }
+    if (!visibleInMerge.length) return;
+    var anchorCol = visibleInMerge[0];
+    spans[r0 + ':' + anchorCol] = {rowspan: rs, colspan: visibleInMerge.length};
     for (var r = r0; r < r0 + rs; r++) {
-      for (var c = c0; c < c0 + cs && c <= cols; c++) {
-        if (!(r === r0 && c === c0)) skipped[r + ':' + c] = true;
-      }
+      visibleInMerge.forEach(function(cc) {
+        if (!(r === r0 && cc === anchorCol)) skipped[r + ':' + cc] = true;
+      });
     }
   });
 
@@ -68,13 +81,13 @@ function phoneGmailBuildExactHtml_(sh) {
   html += '<div style="font-family:Arial,sans-serif;margin:0;padding:0;max-width:760px">';
   html += '<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;table-layout:fixed;width:auto;margin:0;font-family:Arial,sans-serif;font-size:13px;line-height:1.18">';
   html += '<colgroup>';
-  for (var c = 1; c <= cols; c++) html += '<col style="width:' + Math.max(42, sh.getColumnWidth(c)) + 'px">';
+  visibleCols.forEach(function(c) { html += '<col style="width:' + Math.max(42, sh.getColumnWidth(c)) + 'px">'; });
   html += '</colgroup>';
 
   for (var rr = 1; rr <= lastRow; rr++) {
     html += '<tr style="height:' + sh.getRowHeight(rr) + 'px">';
-    for (var cc = 1; cc <= cols; cc++) {
-      if (skipped[rr + ':' + cc]) continue;
+    visibleCols.forEach(function(cc) {
+      if (skipped[rr + ':' + cc]) return;
       var sp = spans[rr + ':' + cc] || {rowspan: 1, colspan: 1};
       var v = values[rr - 1][cc - 1];
       var bg = bgs[rr - 1][cc - 1];
@@ -84,6 +97,10 @@ function phoneGmailBuildExactHtml_(sh) {
       var align = aligns[rr - 1][cc - 1] || 'center';
       var valign = valigns[rr - 1][cc - 1] || 'middle';
       var white = wraps[rr - 1][cc - 1] ? 'pre-line' : 'nowrap';
+      var link = '';
+      try { link = rich[rr - 1][cc - 1] && rich[rr - 1][cc - 1].getLinkUrl(); } catch(e) { link = ''; }
+      var content = phoneGmailHtmlEscape_(v);
+      if (link) content = '<a href="' + phoneGmailHtmlEscape_(link) + '" style="color:#1155cc;text-decoration:underline">' + content + '</a>';
       var tag = rr === 5 ? 'th' : 'td';
       html += '<' + tag + ' rowspan="' + sp.rowspan + '" colspan="' + sp.colspan + '" style="' +
         'border:1px solid #cbd5e1;' +
@@ -96,8 +113,8 @@ function phoneGmailBuildExactHtml_(sh) {
         'vertical-align:' + valign + ';' +
         'white-space:' + white + ';' +
         'box-sizing:border-box;' +
-        '">' + phoneGmailHtmlEscape_(v) + '</' + tag + '>';
-    }
+        '">' + content + '</' + tag + '>';
+    });
     html += '</tr>';
   }
   html += '</table></div>';
