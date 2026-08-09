@@ -2,8 +2,13 @@ name: Put Money Flow - Yahoo Options
 
 on:
   schedule:
-    # Every 5 minutes during the U.S. trading day, offset from the top of the hour.
-    - cron: '2-57/5 9-16 * * 1-5'
+    # Every 5 minutes during the regular U.S. trading session, New York time.
+    # Offset from top-of-hour congestion; final pass just after the 4:00 PM close.
+    - cron: '31-56/5 9 * * 1-5'
+      timezone: America/New_York
+    - cron: '1-56/5 10-15 * * 1-5'
+      timezone: America/New_York
+    - cron: '1 16 * * 1-5'
       timezone: America/New_York
   workflow_dispatch:
 
