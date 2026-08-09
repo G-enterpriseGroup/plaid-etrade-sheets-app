@@ -1,28 +1,53 @@
 name: Put Money Flow - Yahoo Options
 
 on:
-  schedule:
-    # Every 5 minutes during the regular U.S. trading session, New York time.
-    # Offset from top-of-hour congestion; final pass just after the 4:00 PM close.
-    - cron: '31-56/5 9 * * 1-5'
-      timezone: America/New_York
-    - cron: '1-56/5 10-15 * * 1-5'
-      timezone: America/New_York
-    - cron: '1 16 * * 1-5'
-      timezone: America/New_York
   workflow_dispatch:
+    inputs:
+      request_id:
+        description: Unique Apps Script request id
+        required: true
+        type: string
+      mode:
+        description: expirations, strikes, or quotes
+        required: true
+        type: string
+      row:
+        description: Put Money Flow row for picker requests
+        required: false
+        default: ''
+        type: string
+      ticker:
+        description: Underlying ticker
+        required: false
+        default: ''
+        type: string
+      option_type:
+        description: CALL or PUT
+        required: false
+        default: ''
+        type: string
+      expiration:
+        description: YYYY-MM-DD
+        required: false
+        default: ''
+        type: string
+      contracts_json:
+        description: JSON array of completed option rows for quote refresh
+        required: false
+        default: '[]'
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: put-money-flow-yfinance
-  cancel-in-progress: true
+  group: put-money-flow-yfinance-${{ inputs.request_id }}
+  cancel-in-progress: false
 
 jobs:
-  refresh-put-money-flow:
+  yahoo-options:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
@@ -33,17 +58,34 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Yahoo and Google Sheets dependencies
+      - name: Install yfinance
         run: |
           python -m pip install --upgrade pip
-          pip install \
-            'yfinance==1.5.1' \
-            'pandas>=2.2,<3' \
-            'google-api-python-client>=2.170,<3' \
-            'google-auth>=2.40,<3'
+          pip install 'yfinance>=0.2.51,<2' 'pandas>=2.2,<3'
 
-      - name: Refresh Put Money Flow option picker and prices
+      - name: Run Yahoo option request
         env:
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          GOOGLE_SHEET_ID: 1sgNWMAZEIdOBargwH8ILs_oB-1HQzUoVssaqnsujY2g
-        run: python backend/put_money_flow_yfinance.py
+          PMF_REQUEST_ID: ${{ inputs.request_id }}
+          PMF_MODE: ${{ inputs.mode }}
+          PMF_ROW: ${{ inputs.row }}
+          PMF_TICKER: ${{ inputs.ticker }}
+          PMF_OPTION_TYPE: ${{ inputs.option_type }}
+          PMF_EXPIRATION: ${{ inputs.expiration }}
+          PMF_CONTRACTS_JSON: ${{ inputs.contracts_json }}
+        run: |
+          python backend/put_money_flow_yfinance.py \
+            --request-id "$PMF_REQUEST_ID" \
+            --mode "$PMF_MODE" \
+            --row "$PMF_ROW" \
+            --ticker "$PMF_TICKER" \
+            --option-type "$PMF_OPTION_TYPE" \
+            --expiration "$PMF_EXPIRATION" \
+            --contracts-json "$PMF_CONTRACTS_JSON"
+
+      - name: Upload result for Apps Script
+        uses: actions/upload-artifact@v4
+        with:
+          name: pmf-${{ inputs.request_id }}
+          path: /tmp/pmf_result.json
+          if-no-files-found: error
+          retention-days: 1
